@@ -1,0 +1,384 @@
+"""Dashboard, accounts, profiles, settings and OAuth routes."""
+import secrets
+import shutil
+from functools import wraps
+
+from flask import (Blueprint, abort, flash, redirect, render_template, request,
+                   session, url_for)
+
+from config import CLIENT_SECRET_PATH, SCOPES
+from database.db import get_setting, set_setting
+from modules.browser import chromium, profile_manager as prm, process_manager as pm
+from modules.google_auth import account_manager as am, oauth, token_manager as tm
+
+bp = Blueprint("dashboard", __name__)
+
+
+# ------------------------------------------------------------------ CSRF
+def csrf_token() -> str:
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_urlsafe(32)
+    return session["csrf"]
+
+
+@bp.before_app_request
+def _csrf_protect():
+    if request.method == "POST":
+        sent = request.form.get("csrf_token", "")
+        if not sent or not secrets.compare_digest(sent, session.get("csrf", "")):
+            abort(400, "Invalid or missing CSRF token. Reload the page and try again.")
+
+
+@bp.app_context_processor
+def _inject():
+    return {"csrf_token": csrf_token}
+
+
+def _back(default="dashboard.index"):
+    return redirect(request.referrer or url_for(default))
+
+
+def _ids(name="ids"):
+    return request.form.getlist(name)
+
+
+# -------------------------------------------------------------- dashboard
+@bp.route("/")
+def index():
+    from modules.browser import automation_manager as atm
+    all_autos = atm.list_automations()
+    running_autos = [a for a in all_autos if a["status"] == "Running"]
+    logs = atm.get_logs(30)
+    return render_template(
+        "dashboard.html",
+        stats=prm.stats(),
+        accounts=am.list_accounts()[:5],
+        profiles=prm.list_profiles()[:5],
+        running_automations=running_autos,
+        recent_logs=logs,
+        configured=oauth.client_configured(),
+    )
+
+
+# --------------------------------------------------------------- accounts
+@bp.route("/accounts")
+def accounts():
+    q, status = request.args.get("q", "").strip(), request.args.get("status", "")
+    return render_template(
+        "accounts.html", accounts=am.list_accounts(q, status), q=q, status=status,
+        configured=oauth.client_configured(),
+        redirect_uri=url_for("dashboard.oauth_callback", _external=True),
+        secret_path=str(CLIENT_SECRET_PATH),
+    )
+
+
+@bp.route("/oauth/start")
+def oauth_start():
+    if not oauth.client_configured():
+        flash(f"Google client file not found at {CLIENT_SECRET_PATH}. See Settings / README.", "error")
+        return redirect(url_for("dashboard.accounts"))
+    redirect_uri = url_for("dashboard.oauth_callback", _external=True)
+    try:
+        auth_url, state, verifier = oauth.start(redirect_uri)
+    except Exception as exc:
+        flash(f"Could not start Google sign-in: {exc}", "error")
+        return redirect(url_for("dashboard.accounts"))
+    
+    # Provision dedicated profile directory so session cookies are created directly inside it
+    import uuid
+    new_profile_id = str(uuid.uuid4())
+    profile_dir = prm.profiles_root() / new_profile_id
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Store in settings (cross-browser persistent) + session
+    session["oauth_state"], session["oauth_verifier"] = state, verifier
+    session["oauth_profile_id"] = new_profile_id
+    set_setting(f"pending_profile_{state}", new_profile_id)
+    if verifier:
+        set_setting(f"pending_verifier_{state}", verifier)
+    
+    # Launch Chrome window with this profile directly on the Google OAuth login page
+    ok, msg = prm.launch_browser(str(profile_dir), url=auth_url)
+    if not ok:
+        flash(f"Warning: could not launch Chrome automatically ({msg}). Redirecting in current browser.", "error")
+        return redirect(auth_url)
+    
+    flash("Chrome launched with a new dedicated profile. Sign in on the Chrome window to complete setup.", "info")
+    return redirect(url_for("dashboard.accounts"))
+
+
+@bp.route("/oauth/callback")
+def oauth_callback():
+    state = request.args.get("state", "") or session.pop("oauth_state", None)
+    verifier = session.pop("oauth_verifier", None) or get_setting(f"pending_verifier_{state}")
+    
+    # Retrieve pending profile id associated with this state
+    saved_profile_id = session.pop("oauth_profile_id", None) or get_setting(f"pending_profile_{state}")
+    
+    if request.args.get("error"):
+        flash(f"Google authorization was cancelled or denied: {request.args['error']}", "error")
+        return redirect(url_for("dashboard.accounts"))
+    
+    try:
+        creds, info = oauth.finish(
+            url_for("dashboard.oauth_callback", _external=True), state, verifier, request.url
+        )
+        account_id, created = am.upsert_account(creds, info)
+        # Bind or create profile record and mark as Signed in
+        p_id, p_name = prm.create_or_bind_profile(account_id, info.get("email"), pre_profile_id=saved_profile_id)
+    except Exception as exc:
+        flash(f"Google sign-in failed: {exc}", "error")
+        return redirect(url_for("dashboard.accounts"))
+    flash(f"{'Connected' if created else 'Reconnected'} {info.get('email')}. Profile '{p_name}' ready & pre-logged in!", "success")
+    return redirect(url_for("dashboard.profiles"))
+
+
+@bp.post("/accounts/<account_id>/disconnect")
+def account_disconnect(account_id):
+    ok, msg = am.disconnect(account_id)
+    flash(msg, "success" if ok else "error")
+    return _back("dashboard.accounts")
+
+
+@bp.post("/accounts/<account_id>/refresh")
+def account_refresh(account_id):
+    ok, msg = tm.refresh(account_id)
+    flash(msg, "success" if ok else "error")
+    return _back("dashboard.accounts")
+
+
+@bp.post("/accounts/<account_id>/delete")
+def account_delete(account_id):
+    for p in prm.list_profiles():
+        if p["account_id"] == account_id:
+            prm.delete(p["id"])
+    tm.revoke(account_id)
+    am.delete_account_row(account_id)
+    flash("Account record and its profiles deleted.", "success")
+    return _back("dashboard.accounts")
+
+
+@bp.post("/accounts/generate")
+def accounts_generate():
+    ids = _ids()
+    if not ids:
+        flash("Select at least one account first.", "error")
+        return _back("dashboard.accounts")
+    results = prm.generate(ids, force=request.form.get("force") == "1")
+    created = sum(r["status"] == "created" for r in results)
+    skipped = [r["email"] for r in results if r["status"] == "skipped"]
+    failed = [f"{r['email']}: {r['message']}" for r in results if r["status"] == "failed"]
+    if created:
+        flash(f"Created {created} profile(s).", "success")
+    if skipped:
+        flash(f"Skipped (profile already exists): {', '.join(skipped)}", "info")
+    for f in failed:
+        flash(f"Failed - {f}", "error")
+    return redirect(url_for("dashboard.profiles"))
+
+
+@bp.post("/accounts/bulk/<action>")
+def accounts_bulk(action):
+    ids = _ids()
+    if not ids:
+        flash("Select at least one account first.", "error")
+        return _back("dashboard.accounts")
+    if action == "delete":
+        for aid in ids:
+            for p in prm.list_profiles():
+                if p["account_id"] == aid:
+                    prm.delete(p["id"])
+            tm.revoke(aid)
+            am.delete_account_row(aid)
+        flash(f"Deleted {len(ids)} account(s) and associated profiles.", "success")
+    elif action == "disconnect":
+        for aid in ids:
+            am.disconnect(aid)
+        flash(f"Disconnected {len(ids)} account(s).", "success")
+    else:
+        abort(404)
+    return redirect(url_for("dashboard.accounts"))
+
+
+# --------------------------------------------------------------- profiles
+@bp.route("/profiles")
+def profiles():
+    q = request.args.get("q", "").strip()
+    return render_template("profiles.html", profiles=prm.list_profiles(q), q=q,
+                           chrome=chromium.find_chrome())
+
+
+@bp.route("/profiles/<profile_id>")
+def profile_details(profile_id):
+    p = prm.get_profile(profile_id)
+    if not p:
+        abort(404)
+    return render_template("profile_details.html", p=p)
+
+
+def _single(action):
+    @wraps(action)
+    def wrapper(profile_id):
+        ok, msg = action(profile_id)
+        flash(msg, "success" if ok else "error")
+        return _back("dashboard.profiles")
+    return wrapper
+
+
+for _name, _fn in (("launch", prm.launch), ("close", prm.close), ("restart", prm.restart)):
+    bp.add_url_rule(f"/profiles/<profile_id>/{_name}", f"profile_{_name}",
+                    _single(_fn), methods=["POST"])
+
+
+@bp.post("/profiles/<profile_id>/delete")
+def profile_delete(profile_id):
+    ok, msg = prm.delete(profile_id)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("dashboard.profiles"))
+
+
+@bp.post("/profiles/<profile_id>/auth")
+def profile_auth(profile_id):
+    mode = request.form.get("mode", "detect")
+    if mode == "signed_in":
+        prm.set_auth_status(profile_id, "Signed in")
+        flash("Marked as signed in.", "success")
+    elif mode == "pending":
+        prm.set_auth_status(profile_id, "Pending")
+        flash("Marked as pending.", "success")
+    else:
+        flash(f"Authentication status: {prm.refresh_auth(profile_id)}", "info")
+    return _back("dashboard.profiles")
+
+
+@bp.post("/profiles/bulk/<action>")
+def profiles_bulk(action):
+    ids = _ids()
+    fns = {"launch": prm.launch, "close": prm.close, "delete": prm.delete}
+    if action not in fns:
+        abort(404)
+    if not ids:
+        flash("Select at least one profile first.", "error")
+        return _back("dashboard.profiles")
+    ok_count, errors = 0, []
+    for pid in ids:
+        ok, msg = fns[action](pid)
+        if ok:
+            ok_count += 1
+        else:
+            errors.append(msg)
+    flash(f"{action.capitalize()}: {ok_count} profile(s) done.", "success")
+    for e in errors:
+        flash(e, "error")
+    return redirect(url_for("dashboard.profiles"))
+
+
+@bp.post("/profiles/import-system")
+def profiles_import_system():
+    results = prm.import_from_system_chrome()
+    if not results:
+        flash("No Chrome profiles found in default user data folder to import.", "info")
+        return redirect(url_for("dashboard.profiles"))
+    imported = sum(1 for r in results if r["status"] == "imported")
+    skipped = sum(1 for r in results if r["status"] == "skipped")
+    failed = [f"{r['name']}: {r['message']}" for r in results if r["status"] == "failed"]
+    if imported:
+        flash(f"Successfully imported {imported} profile(s) from Chrome!", "success")
+    if skipped:
+        flash(f"{skipped} profile(s) were already imported.", "info")
+    for f in failed:
+        flash(f"Import failed for {f}", "error")
+    return redirect(url_for("dashboard.profiles"))
+
+
+# ----------------------------------------------------------- automations
+@bp.route("/automations")
+def automations():
+    from modules.browser import automation_manager as atm
+    return render_template(
+        "automations.html",
+        automations=atm.list_automations(),
+        profiles=prm.list_profiles(),
+        recent_logs=atm.get_logs(30),
+    )
+
+
+@bp.route("/api/automations/status")
+def api_automations_status():
+    from modules.browser import automation_manager as atm
+    return {
+        "automations": atm.list_automations(),
+        "logs": atm.get_logs(40),
+    }
+
+
+@bp.route("/api/dashboard/live")
+def api_dashboard_live():
+    from modules.browser import automation_manager as atm
+    all_autos = atm.list_automations()
+    running_autos = [a for a in all_autos if a["status"] == "Running"]
+    return {
+        "stats": prm.stats(),
+        "running_automations": running_autos,
+        "logs": atm.get_logs(40),
+    }
+
+
+@bp.post("/automations/create")
+def automation_create():
+    from modules.browser import automation_manager as atm
+    name = request.form.get("name", "").strip()
+    url = request.form.get("url", "").strip()
+    duration = int(request.form.get("duration_seconds", 30))
+    is_loop = request.form.get("is_loop") == "1"
+    repeat_count = int(request.form.get("repeat_count", 1))
+    profile_ids = request.form.getlist("profile_ids")
+    
+    if not profile_ids:
+        flash("Please select at least one profile for the automation.", "error")
+        return redirect(url_for("dashboard.automations"))
+    
+    atm.create_automation(name, url, profile_ids, duration, is_loop, repeat_count)
+    flash(f"Created automation '{name}'.", "success")
+    return redirect(url_for("dashboard.automations"))
+
+
+@bp.post("/automations/<auto_id>/start")
+def automation_start(auto_id):
+    from modules.browser import automation_manager as atm
+    ok, msg = atm.start_automation(auto_id)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("dashboard.automations"))
+
+
+@bp.post("/automations/<auto_id>/stop")
+def automation_stop(auto_id):
+    from modules.browser import automation_manager as atm
+    ok, msg = atm.stop_automation(auto_id)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("dashboard.automations"))
+
+
+@bp.post("/automations/<auto_id>/delete")
+def automation_delete(auto_id):
+    from modules.browser import automation_manager as atm
+    atm.delete_automation(auto_id)
+    flash("Automation deleted.", "success")
+    return redirect(url_for("dashboard.automations"))
+
+
+# -------------------------------------------------------------- settings
+@bp.route("/settings", methods=["GET", "POST"])
+def settings():
+    if request.method == "POST":
+        set_setting("chrome_path", request.form.get("chrome_path", "").strip())
+        set_setting("profiles_dir", request.form.get("profiles_dir", "").strip())
+        flash("Settings saved.", "success")
+        return redirect(url_for("dashboard.settings"))
+    return render_template(
+        "settings.html", chrome_path=get_setting("chrome_path", ""),
+        detected=chromium.find_chrome(), profiles_dir=get_setting("profiles_dir", ""),
+        effective_dir=str(prm.profiles_root()), secret_path=str(CLIENT_SECRET_PATH),
+        configured=oauth.client_configured(), scopes=SCOPES,
+        redirect_uri=url_for("dashboard.oauth_callback", _external=True),
+    )

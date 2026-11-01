@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ p.profile_name }} · Kroma{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ p.profile_name }}</h1>
+  <a class="btn" href="{{ url_for('dashboard.profiles') }}">← All profiles</a>
+</div>
+
+<section class="card">
+  <dl class="details">
+    <dt>Profile ID</dt><dd><code>{{ p.id }}</code></dd>
+    <dt>Google account</dt><dd>{{ p.email }}{% if p.display_name %} ({{ p.display_name }}){% endif %}</dd>
+    <dt>Directory</dt><dd><code>{{ p.profile_directory }}</code></dd>
+    <dt>Browser status</dt><dd><span class="pill {{ p.browser_status|lower }}">{{ p.browser_status }}</span></dd>
+    <dt>Sign-in status</dt><dd><span class="pill auth-{{ p.authentication_status|lower|replace(' ','-') }}">{{ p.authentication_status }}</span></dd>
+    <dt>Created</dt><dd>{{ p.created_at|dt }}</dd>
+    <dt>Updated</dt><dd>{{ p.updated_at|dt }}</dd>
+  </dl>
+
+  <form method="post" class="actions-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if p.browser_status == 'Running' %}
+    <button class="btn" formaction="{{ url_for('dashboard.profile_close', profile_id=p.id) }}">Close</button>
+    <button class="btn" formaction="{{ url_for('dashboard.profile_restart', profile_id=p.id) }}">Restart</button>
+    {% else %}
+    <button class="btn primary" formaction="{{ url_for('dashboard.profile_launch', profile_id=p.id) }}">Launch</button>
+    {% endif %}
+    <button class="btn danger" formaction="{{ url_for('dashboard.profile_delete', profile_id=p.id) }}" onclick="return confirm('Delete this profile and its browser data?')">Delete</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Sign-in status</h2>
+  <p class="muted">Connecting an account through OAuth does <b>not</b> sign Chrome in. Launch the profile and sign in once on Google's own page; the session then persists in this profile's folder. Kroma can check for a Google session cookie (best effort, works when the browser is closed), or you can set the status yourself.</p>
+  <form method="post" class="actions-row" action="{{ url_for('dashboard.profile_auth', profile_id=p.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn" name="mode" value="detect">Check now</button>
+    <button class="btn" name="mode" value="signed_in">Mark as signed in</button>
+    <button class="btn" name="mode" value="pending">Mark as pending</button>
+  </form>
+</section>
+{% endblock %}

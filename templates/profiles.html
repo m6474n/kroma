@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Browser Profiles · Kroma{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Browser Profiles</h1>
+  <form method="post" action="{{ url_for('dashboard.profiles_import_system') }}" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn primary">📥 Import from Chrome</button>
+  </form>
+</div>
+{% if not chrome %}
+<div class="flash error">Chrome/Chromium wasn't found. Set its path in <a href="{{ url_for('dashboard.settings') }}">Settings</a> before launching profiles.</div>
+{% endif %}
+
+<form method="get" class="filters">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search profile or email…">
+  <button class="btn">Search</button>
+</form>
+
+<form method="post" id="bulk-form" data-count-target="#sel-count">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="toolbar">
+    <button type="button" class="btn" data-select="all">Select all</button>
+    <button type="button" class="btn" data-select="none">Deselect all</button>
+    <span class="muted"><b id="sel-count">0</b> selected</span>
+    <span class="spacer"></span>
+    <button class="btn" formaction="{{ url_for('dashboard.profiles_bulk', action='launch') }}">Launch selected</button>
+    <button class="btn" formaction="{{ url_for('dashboard.profiles_bulk', action='close') }}">Close selected</button>
+    <button class="btn danger" formaction="{{ url_for('dashboard.profiles_bulk', action='delete') }}" onclick="return confirm('Delete the selected profiles and their browser data?')">Delete selected</button>
+  </div>
+
+  <table class="grid">
+    <thead><tr><th></th><th>Profile</th><th>Google account</th><th>Browser</th><th>Sign-in</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for p in profiles %}
+      <tr>
+        <td><input type="checkbox" name="ids" value="{{ p.id }}" class="row-check"></td>
+        <td><a href="{{ url_for('dashboard.profile_details', profile_id=p.id) }}"><b>{{ p.profile_name }}</b></a></td>
+        <td>{{ p.email }}</td>
+        <td><span class="pill {{ p.browser_status|lower }}">{{ p.browser_status }}</span></td>
+        <td><span class="pill auth-{{ p.authentication_status|lower|replace(' ','-') }}">{{ p.authentication_status }}</span></td>
+        <td>{{ p.created_at|dt }}</td>
+        <td class="actions">
+          {% if p.browser_status == 'Running' %}
+          <button class="btn sm" formaction="{{ url_for('dashboard.profile_close', profile_id=p.id) }}">Close</button>
+          <button class="btn sm" formaction="{{ url_for('dashboard.profile_restart', profile_id=p.id) }}">Restart</button>
+          {% else %}
+          <button class="btn sm primary" formaction="{{ url_for('dashboard.profile_launch', profile_id=p.id) }}">Launch</button>
+          {% endif %}
+          <button class="btn sm danger" formaction="{{ url_for('dashboard.profile_delete', profile_id=p.id) }}" onclick="return confirm('Delete {{ p.profile_name }} and its browser data?')">Delete</button>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">No profiles yet. Select accounts on the <a href="{{ url_for('dashboard.accounts') }}">Google Accounts</a> page and click “Generate Profiles”.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</form>
+{% endblock %}

@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% block title %}Automations · Kroma{% endblock %}
+{% block content %}
+<style>
+.pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1a7f4b;
+  box-shadow: 0 0 0 rgba(26, 127, 75, 0.4);
+  animation: pulse 1.5s infinite;
+  vertical-align: middle;
+}
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 127, 75, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 5px rgba(26, 127, 75, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 127, 75, 0); }
+}
+.prof-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.prof-chip {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f8f8f6;
+  border: 1px solid #e4e4e0;
+  font-size: 12px;
+  transition: all 0.3s ease;
+}
+.prof-chip.active {
+  background: #f0fdf4;
+  border-color: #1a7f4b;
+  box-shadow: 0 0 0 1px #1a7f4b;
+}
+.iter-badge {
+  background: #fff;
+  border: 1px solid #d0d0cc;
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #333;
+}
+.timer-badge {
+  font-weight: 700;
+  color: #1a7f4b;
+  font-size: 11px;
+}
+.log-line {
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  gap: 8px;
+}
+.log-line:last-child { border-bottom: 0; }
+.log-time { color: #8b949e; }
+.log-tag { font-weight: 600; }
+.log-info { color: #79c0ff; }
+.log-success { color: #56d364; }
+.log-warn { color: #e3b341; }
+.log-error { color: #f85149; }
+</style>
+
+<div class="page-head">
+  <h1>Automations</h1>
+</div>
+
+<div class="row">
+  <!-- Left Column: Add New Automation -->
+  <section class="card">
+    <h2>Add New Automation</h2>
+    <form method="post" action="{{ url_for('dashboard.automation_create') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      
+      <div class="form-group" style="margin-bottom:12px;">
+        <label><b>Automation Name</b></label>
+        <input type="text" name="name" placeholder="e.g. YouTube Concurrent Viewers" required style="width:100%; padding:8px; margin-top:4px;">
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label><b>Target URL</b></label>
+        <input type="url" name="url" placeholder="https://youtube.com/watch?v=..." required style="width:100%; padding:8px; margin-top:4px;">
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label><b>Run Duration per Profile (seconds)</b></label>
+        <input type="number" name="duration_seconds" value="30" min="5" max="3600" required style="width:100%; padding:8px; margin-top:4px;">
+        <small class="muted" style="display:block; margin-top:2px;">All selected profiles launch simultaneously. Each profile's closing time is managed separately.</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" name="is_loop" id="is_loop" value="1" onchange="toggleRepeat(this.checked)">
+          <b>Loop Continuously</b>
+        </label>
+        <small class="muted">Repeats all profile cycles indefinitely until stopped.</small>
+      </div>
+
+      <div class="form-group" id="repeat_box" style="margin-bottom:16px;">
+        <label><b>Number of Cycles (Repetitions)</b></label>
+        <input type="number" name="repeat_count" id="repeat_count" value="1" min="1" max="1000" style="width:100%; padding:8px; margin-top:4px;">
+        <small class="muted">How many times each profile repeats if not looping infinitely.</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <label style="margin:0;"><b>Select Profiles to Run</b> (<span id="auto_sel_count">0</span> selected)</label>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="btn sm" onclick="toggleAllProfiles(true)">Select All</button>
+            <button type="button" class="btn sm" onclick="toggleAllProfiles(false)">Deselect All</button>
+          </div>
+        </div>
+        <div style="max-height:180px; overflow-y:auto; border:1px solid #d0d0cc; padding:8px; border-radius:6px; margin-top:4px; background:#fafaf8;">
+          {% for p in profiles %}
+            <label style="display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer;">
+              <input type="checkbox" name="profile_ids" value="{{ p.id }}" class="auto-profile-chk" onchange="updateSelCount()">
+              <span><b>{{ p.profile_name }}</b> <span class="muted">({{ p.email }})</span></span>
+            </label>
+          {% else %}
+            <p class="muted">No browser profiles found. Generate or import profiles first.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <button class="btn primary" type="submit">Create Automation</button>
+    </form>
+  </section>
+
+  <!-- Right Column: Existing Automations -->
+  <section class="card">
+    <h2>Existing Automations</h2>
+    <div id="automations_list">
+      {% for a in automations %}
+        <div class="card" id="auto_card_{{ a.id }}" style="border:1px solid #d0d0cc; padding:14px; border-radius:8px; margin-bottom:14px; background:#fff;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h3 style="margin:0; font-size:16px;">{{ a.name }}</h3>
+            <span class="pill {{ 'running' if a.status == 'Running' else 'stopped' }}" id="pill_{{ a.id }}">
+              {{ a.status }}
+            </span>
+          </div>
+          
+          <p style="margin:4px 0; font-size:13px;"><b>URL:</b> <code>{{ a.url }}</code></p>
+          <p style="margin:4px 0; font-size:13px;">
+            <b>Duration:</b> {{ a.duration_seconds }}s | 
+            <b>Mode:</b> {% if a.is_loop %}<span style="color:#1a7f4b; font-weight:600;">Infinite Loop</span>{% else %}{{ a.repeat_count }} cycle(s){% endif %} |
+            <b>Running:</b> <b id="run_count_{{ a.id }}" style="color:#1a7f4b;">{{ a.running_profiles_count }}</b> of {{ a.profile_ids_list|length }} profiles
+          </p>
+
+          <!-- Per-Profile Live Status & Timers -->
+          <div style="margin-top:12px;">
+            <small class="muted" style="font-weight:600;">Profiles & Independent Timers:</small>
+            <div class="prof-grid" id="chips_{{ a.id }}">
+              {% for p in a.profiles_detail %}
+                <div class="prof-chip {{ 'active' if p.is_running else '' }}" id="chip_{{ a.id }}_{{ p.id }}">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <b>{{ p.name }}</b>
+                    <span class="iter-badge" id="piter_{{ a.id }}_{{ p.id }}">{{ p.iterations }} iters</span>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                    <span id="pstatus_{{ a.id }}_{{ p.id }}">
+                      {% if p.is_running %}
+                        <span class="pulse-dot"></span> <span style="color:#1a7f4b; font-weight:600;">Running</span>
+                      {% else %}
+                        <span class="muted">Closed</span>
+                      {% endif %}
+                    </span>
+                    <span class="timer-badge" id="ptimer_{{ a.id }}_{{ p.id }}">
+                      {% if p.is_running %}{{ p.time_remaining }}s left{% else %}—{% endif %}
+                    </span>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          
+          <div style="display:flex; gap:8px; margin-top:14px; align-items:center;">
+            <div id="btn_wrap_{{ a.id }}">
+              {% if a.status == 'Running' %}
+                <form method="post" action="{{ url_for('dashboard.automation_stop', auto_id=a.id) }}" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn danger sm">⏹ Stop</button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('dashboard.automation_start', auto_id=a.id) }}" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn primary sm">▶ Start</button>
+                </form>
+              {% endif %}
+            </div>
+            
+            <form method="post" action="{{ url_for('dashboard.automation_delete', auto_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Delete this automation?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn sm">Delete</button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <p class="muted">No automations configured yet. Create one on the left.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<!-- Live Activity Logs Section -->
+<section class="card" style="margin-top:18px;">
+  <div class="card-head" style="display:flex; justify-content:space-between; align-items:center;">
+    <h2 style="display:flex; align-items:center; gap:8px; margin:0;">
+      <span>⚡ Live Automation Activity Logs</span>
+    </h2>
+    <span class="muted" style="font-size:12px;">Auto-refreshing</span>
+  </div>
+  <div id="auto_logs_box" style="background:#0d1117; color:#c9d1d9; font-family:Consolas, monospace; font-size:12px; padding:12px; border-radius:6px; max-height:220px; overflow-y:auto; border:1px solid #30363d; margin-top:8px;">
+    {% for l in recent_logs %}
+      <div class="log-line">
+        <span class="log-time">[{{ l.time }}]</span>
+        <span class="log-tag log-{{ l.level }}">[{{ l.auto_name }}]</span>
+        <span>{{ l.message }}</span>
+      </div>
+    {% else %}
+      <div class="muted" style="padding:4px 0;">No automation logs recorded yet.</div>
+    {% endfor %}
+  </div>
+</section>
+
+<script>
+const CSRF_TOKEN = "{{ csrf_token() }}";
+
+function toggleRepeat(isLoop) {
+  const box = document.getElementById('repeat_box');
+  if (box) box.style.opacity = isLoop ? '0.4' : '1';
+}
+
+function updateSelCount() {
+  const chks = document.querySelectorAll('.auto-profile-chk');
+  const count = Array.from(chks).filter(c => c.checked).length;
+  const el = document.getElementById('auto_sel_count');
+  if (el) el.textContent = count;
+}
+
+function toggleAllProfiles(checked) {
+  const chks = document.querySelectorAll('.auto-profile-chk');
+  chks.forEach(c => c.checked = checked);
+  updateSelCount();
+}
+
+function renderAutoLogs(logs) {
+  const box = document.getElementById('auto_logs_box');
+  if (!box || !logs) return;
+  if (logs.length === 0) {
+    box.innerHTML = '<div class="muted" style="padding:4px 0;">No automation logs recorded yet.</div>';
+    return;
+  }
+  let html = '';
+  logs.forEach(l => {
+    html += `<div class="log-line">
+      <span class="log-time">[${l.time}]</span>
+      <span class="log-tag log-${l.level}">[${l.auto_name}]</span>
+      <span>${l.message}</span>
+    </div>`;
+  });
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+async function pollAutomationsStatus() {
+  try {
+    const res = await fetch('/api/automations/status');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (data.automations) {
+      data.automations.forEach(a => {
+        // 1. Status Pill
+        const pill = document.getElementById(`pill_${a.id}`);
+        if (pill) {
+          pill.className = `pill ${a.status === 'Running' ? 'running' : 'stopped'}`;
+          pill.textContent = a.status;
+        }
+
+        // 2. Running profiles count
+        const runCount = document.getElementById(`run_count_${a.id}`);
+        if (runCount) runCount.textContent = a.running_profiles_count;
+
+        // 3. Per-profile iterations & independent timers
+        if (a.profiles_detail) {
+          a.profiles_detail.forEach(p => {
+            const chip = document.getElementById(`chip_${a.id}_${p.id}`);
+            if (chip) {
+              if (p.is_running) {
+                chip.classList.add('active');
+              } else {
+                chip.classList.remove('active');
+              }
+            }
+
+            const pstatus = document.getElementById(`pstatus_${a.id}_${p.id}`);
+            if (pstatus) {
+              if (p.is_running) {
+                pstatus.innerHTML = '<span class="pulse-dot"></span> <span style="color:#1a7f4b; font-weight:600;">Running</span>';
+              } else {
+                pstatus.innerHTML = '<span class="muted">Closed</span>';
+              }
+            }
+
+            const ptimer = document.getElementById(`ptimer_${a.id}_${p.id}`);
+            if (ptimer) {
+              ptimer.textContent = p.is_running ? `${p.time_remaining}s left` : '—';
+            }
+
+            const piter = document.getElementById(`piter_${a.id}_${p.id}`);
+            if (piter) piter.textContent = `${p.iterations} iters`;
+          });
+        }
+
+        // 4. Button toggle
+        const btnWrap = document.getElementById(`btn_wrap_${a.id}`);
+        if (btnWrap) {
+          if (a.status === 'Running') {
+            btnWrap.innerHTML = `
+              <form method="post" action="/automations/${a.id}/stop" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
+                <button class="btn danger sm">⏹ Stop</button>
+              </form>
+            `;
+          } else {
+            btnWrap.innerHTML = `
+              <form method="post" action="/automations/${a.id}/start" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
+                <button class="btn primary sm">▶ Start</button>
+              </form>
+            `;
+          }
+        }
+      });
+    }
+
+    renderAutoLogs(data.logs);
+  } catch (err) {
+    // Ignore network drop
+  }
+}
+
+setInterval(pollAutomationsStatus, 1500);
+</script>
+{% endblock %}

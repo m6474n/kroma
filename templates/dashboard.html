@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.pulse-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1a7f4b;
+  box-shadow: 0 0 0 rgba(26, 127, 75, 0.4);
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 127, 75, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(26, 127, 75, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 127, 75, 0); }
+}
+.iter-badge {
+  background: #fff;
+  border: 1px solid #d0d0cc;
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #333;
+}
+.log-line {
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  gap: 8px;
+}
+.log-line:last-child { border-bottom: 0; }
+.log-time { color: #8b949e; }
+.log-tag { font-weight: 600; }
+.log-info { color: #79c0ff; }
+.log-success { color: #56d364; }
+.log-warn { color: #e3b341; }
+.log-error { color: #f85149; }
+</style>
+
+<div class="page-head">
+  <h1>Dashboard</h1>
+</div>
+
+<div class="stats">
+  <div class="stat"><b id="stat_accounts">{{ stats.accounts }}</b><span>Connected accounts</span></div>
+  <div class="stat"><b id="stat_profiles">{{ stats.profiles }}</b><span>Browser profiles</span></div>
+  <div class="stat"><b id="stat_running" style="color:#1a7f4b;">{{ stats.running }}</b><span>Running profiles</span></div>
+  <div class="stat"><b id="stat_stopped">{{ stats.stopped }}</b><span>Stopped</span></div>
+  <div class="stat {{ 'warn' if stats.attention }}"><b id="stat_attention">{{ stats.attention }}</b><span>Need attention</span></div>
+</div>
+
+{% if not configured %}
+<div class="flash info">Google OAuth isn't set up yet. Follow the steps under <a href="{{ url_for('dashboard.settings') }}">Settings</a> to add your <code>client_secret.json</code>.</div>
+{% endif %}
+
+<!-- Live Active Automation Status Card -->
+<section class="card" id="active_auto_card" style="border: 1px solid #1a7f4b; background: #fafdfa; margin-bottom: 18px; {% if not running_automations %}display:none;{% endif %}">
+  <div class="card-head" style="display:flex; justify-content:space-between; align-items:center;">
+    <h2 style="display:flex; align-items:center; gap:8px; margin:0; color:#1a7f4b;">
+      <span class="pulse-dot"></span> Active Automation: <span id="dash_auto_name">{{ running_automations[0].name if running_automations else '' }}</span>
+    </h2>
+    <span class="pill running">Running</span>
+  </div>
+  
+  <div id="dash_auto_body" style="margin-top:10px;">
+    {% if running_automations %}
+      {% set cur = running_automations[0] %}
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+        <span class="muted" style="font-size:12px;">URL: <code id="dash_target_url">{{ cur.url }}</code></span>
+        <span class="muted" style="font-size:12px;">Timer: <b>{{ cur.duration_seconds }}s</b> per profile</span>
+      </div>
+
+      <div style="margin-top:8px;">
+        <small class="muted" style="font-weight:600;">Profiles & Independent Timers:</small>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:6px; margin-top:6px;" id="dash_profiles_grid">
+          {% for p in cur.profiles_detail %}
+            <div style="padding:6px 10px; border-radius:6px; background:#fff; border:1px solid {% if p.is_running %}#1a7f4b{% else %}#e4e4e0{% endif %}; font-size:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>{{ p.name }}</b>
+                <span class="iter-badge">{{ p.iterations }} iters</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-top:2px;">
+                <span>{% if p.is_running %}<span class="pulse-dot"></span> <span style="color:#1a7f4b; font-weight:600;">Running</span>{% else %}<span class="muted">Closed</span>{% endif %}</span>
+                <span style="font-weight:700; color:#1a7f4b;">{% if p.is_running %}{{ p.time_remaining }}s left{% else %}—{% endif %}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+        <form method="post" id="dash_stop_form" action="{{ url_for('dashboard.automation_stop', auto_id=cur.id) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn danger sm" type="submit">⏹ Stop Automation</button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- Live Activity Logs Card -->
+<section class="card" style="margin-bottom: 18px;">
+  <div class="card-head" style="display:flex; justify-content:space-between; align-items:center;">
+    <h2 style="display:flex; align-items:center; gap:8px; margin:0;">
+      <span>⚡ Live Activity Logs</span>
+    </h2>
+    <span class="muted" style="font-size:12px;" id="log_status_text">Live stream active</span>
+  </div>
+  <div id="live_logs_box" style="background:#0d1117; color:#c9d1d9; font-family:Consolas, monospace; font-size:12px; padding:12px; border-radius:6px; max-height:180px; overflow-y:auto; border:1px solid #30363d; margin-top:8px;">
+    {% for l in recent_logs %}
+      <div class="log-line">
+        <span class="log-time">[{{ l.time }}]</span>
+        <span class="log-tag log-{{ l.level }}">[{{ l.auto_name }}]</span>
+        <span>{{ l.message }}</span>
+      </div>
+    {% else %}
+      <div class="muted" id="no_logs_msg" style="padding:4px 0;">No automation logs recorded yet.</div>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="row">
+  <section class="card">
+    <div class="card-head"><h2>Recent accounts</h2>
+      <a class="btn primary" href="{{ url_for('dashboard.oauth_start') }}">+ Add Google Account</a></div>
+    {% if accounts %}
+    <table>{% for a in accounts %}
+      <tr><td>{{ a.email }}</td><td><span class="pill {{ a.token_status|lower }}">{{ a.token_status }}</span></td>
+      <td>{{ a.profile_name or '—' }}</td></tr>{% endfor %}</table>
+    {% else %}<p class="muted">No accounts connected yet.</p>{% endif %}
+    <a href="{{ url_for('dashboard.accounts') }}">Manage accounts →</a>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Recent profiles</h2></div>
+    {% if profiles %}
+    <table>{% for p in profiles %}
+      <tr><td><a href="{{ url_for('dashboard.profile_details', profile_id=p.id) }}">{{ p.profile_name }}</a></td>
+      <td>{{ p.email }}</td><td><span class="pill {{ p.browser_status|lower }}">{{ p.browser_status }}</span></td></tr>{% endfor %}</table>
+    {% else %}<p class="muted">No profiles generated yet.</p>{% endif %}
+    <a href="{{ url_for('dashboard.profiles') }}">Manage profiles →</a>
+  </section>
+</div>
+
+<script>
+const CSRF_TOKEN = "{{ csrf_token() }}";
+
+function renderLogs(logs) {
+  const box = document.getElementById('live_logs_box');
+  if (!box || !logs) return;
+  if (logs.length === 0) {
+    box.innerHTML = '<div class="muted" style="padding:4px 0;">No automation logs recorded yet.</div>';
+    return;
+  }
+  let html = '';
+  logs.forEach(l => {
+    html += `<div class="log-line">
+      <span class="log-time">[${l.time}]</span>
+      <span class="log-tag log-${l.level}">[${l.auto_name}]</span>
+      <span>${l.message}</span>
+    </div>`;
+  });
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+function updateActiveAutoCard(runningList) {
+  const card = document.getElementById('active_auto_card');
+  if (!card) return;
+  if (!runningList || runningList.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  const cur = runningList[0];
+  const nameEl = document.getElementById('dash_auto_name');
+  if (nameEl) nameEl.textContent = cur.name;
+
+  const urlEl = document.getElementById('dash_target_url');
+  if (urlEl) urlEl.textContent = cur.url;
+
+  const grid = document.getElementById('dash_profiles_grid');
+  if (grid && cur.profiles_detail) {
+    let html = '';
+    cur.profiles_detail.forEach(p => {
+      const isRun = p.is_running;
+      html += `
+        <div style="padding:6px 10px; border-radius:6px; background:#fff; border:1px solid ${isRun ? '#1a7f4b' : '#e4e4e0'}; font-size:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <b>${p.name}</b>
+            <span class="iter-badge">${p.iterations} iters</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-top:2px;">
+            <span>${isRun ? '<span class="pulse-dot"></span> <span style="color:#1a7f4b; font-weight:600;">Running</span>' : '<span class="muted">Closed</span>'}</span>
+            <span style="font-weight:700; color:#1a7f4b;">${isRun ? p.time_remaining + 's left' : '—'}</span>
+          </div>
+        </div>
+      `;
+    });
+    grid.innerHTML = html;
+  }
+
+  const stopForm = document.getElementById('dash_stop_form');
+  if (stopForm) stopForm.action = `/automations/${cur.id}/stop`;
+}
+
+async function pollDashboardLive() {
+  try {
+    const res = await fetch('/api/dashboard/live');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (data.stats) {
+      const runEl = document.getElementById('stat_running');
+      if (runEl) runEl.textContent = data.stats.running;
+      const stopEl = document.getElementById('stat_stopped');
+      if (stopEl) stopEl.textContent = data.stats.stopped;
+    }
+
+    updateActiveAutoCard(data.running_automations);
+    renderLogs(data.logs);
+  } catch (err) {
+    // Silent on network drop
+  }
+}
+
+setInterval(pollDashboardLive, 1500);
+</script>
+{% endblock %}

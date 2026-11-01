@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Settings · Kroma{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<section class="card">
+  <h2>Browser &amp; storage</h2>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Chrome / Chromium executable
+      <input name="chrome_path" value="{{ chrome_path }}" placeholder="{{ detected or 'Not auto-detected - paste the full path to chrome.exe' }}">
+    </label>
+    <p class="muted">Auto-detected: <code>{{ detected or 'none' }}</code>. Leave blank to use auto-detection.</p>
+    <label>Profiles folder
+      <input name="profiles_dir" value="{{ profiles_dir }}" placeholder="{{ effective_dir }}">
+    </label>
+    <p class="muted">Currently: <code>{{ effective_dir }}</code>. Changing it only affects <i>new</i> profiles.</p>
+    <button class="btn primary">Save</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Google OAuth</h2>
+  <p>Status: {% if configured %}<span class="pill valid">client_secret.json found</span>{% else %}<span class="pill expired">client_secret.json missing</span>{% endif %}</p>
+  <ol>
+    <li>In <b>Google Cloud Console</b>, create a project → <i>APIs &amp; Services → OAuth consent screen</i> (External, Testing). Add every Google account you'll connect as a <b>test user</b>.</li>
+    <li><i>Credentials → Create credentials → OAuth client ID → Web application</i>.</li>
+    <li>Add this <b>Authorized redirect URI</b> exactly: <code>{{ redirect_uri }}</code></li>
+    <li>Download the JSON and save it as <code>{{ secret_path }}</code>.</li>
+    <li>Open the dashboard at the same host you registered (e.g. <code>http://localhost:5000</code>).</li>
+  </ol>
+  <p class="muted">Scopes requested (identity only): {{ scopes|join(', ') }}</p>
+</section>
+{% endblock %}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Kroma{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="{{ url_for('dashboard.index') }}">Kroma</a>
+  <nav>
+    {% set ep = request.endpoint or '' %}
+    <a class="{{ 'on' if ep == 'dashboard.index' }}" href="{{ url_for('dashboard.index') }}">Dashboard</a>
+    <a class="{{ 'on' if ep == 'dashboard.accounts' }}" href="{{ url_for('dashboard.accounts') }}">Google Accounts</a>
+    <a class="{{ 'on' if ep in ('dashboard.profiles','dashboard.profile_details') }}" href="{{ url_for('dashboard.profiles') }}">Browser Profiles</a>
+    <a class="{{ 'on' if ep == 'dashboard.automations' }}" href="{{ url_for('dashboard.automations') }}">Automations</a>
+    <a class="{{ 'on' if ep == 'dashboard.settings' }}" href="{{ url_for('dashboard.settings') }}">Settings</a>
+  </nav>
+</header>
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

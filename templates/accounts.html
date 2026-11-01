@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Google Accounts · Kroma{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Google Accounts</h1>
+  <a class="btn primary" href="{{ url_for('dashboard.oauth_start') }}">+ Add Google Account</a>
+</div>
+
+{% if not configured %}
+<div class="flash info">OAuth client file not found at <code>{{ secret_path }}</code>. Redirect URI to register in Google Cloud: <code>{{ redirect_uri }}</code> (see Settings).</div>
+{% endif %}
+
+<form method="get" class="filters">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search email or name…">
+  <select name="status">
+    <option value="">All statuses</option>
+    {% for s in ['Connected','Disconnected','Valid','Expired','Revoked'] %}
+    <option value="{{ s }}" {{ 'selected' if status == s }}>{{ s }}</option>{% endfor %}
+  </select>
+  <button class="btn">Filter</button>
+</form>
+
+<form method="post" id="bulk-form" data-count-target="#sel-count">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="toolbar">
+    <button type="button" class="btn" data-select="all">Select all</button>
+    <button type="button" class="btn" data-select="none">Deselect all</button>
+    <span class="muted"><b id="sel-count">0</b> selected</span>
+    <span class="spacer"></span>
+    <label class="check"><input type="checkbox" name="force" value="1"> Allow duplicate profile</label>
+    <button class="btn primary" formaction="{{ url_for('dashboard.accounts_generate') }}">Generate Profiles</button>
+    <button class="btn" formaction="{{ url_for('dashboard.accounts_bulk', action='disconnect') }}" onclick="return confirm('Disconnect selected accounts?')">Disconnect selected</button>
+    <button class="btn danger" formaction="{{ url_for('dashboard.accounts_bulk', action='delete') }}" onclick="return confirm('Delete selected accounts and their browser profiles?')">Delete selected</button>
+  </div>
+
+  <table class="grid">
+    <thead><tr><th></th><th></th><th>Email</th><th>Connection</th><th>Token</th><th>Added</th><th>Profile</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for a in accounts %}
+      <tr>
+        <td><input type="checkbox" name="ids" value="{{ a.id }}" class="row-check"></td>
+        <td>{% if a.avatar_url %}<img class="avatar" src="{{ a.avatar_url }}" referrerpolicy="no-referrer" alt="">{% else %}<span class="avatar ph">{{ a.email[0]|upper }}</span>{% endif %}</td>
+        <td><b>{{ a.email }}</b><br><span class="muted">{{ a.display_name or '' }}</span></td>
+        <td><span class="pill {{ a.connection_status|lower }}">{{ a.connection_status }}</span></td>
+        <td><span class="pill {{ a.token_status|lower }}">{{ a.token_status }}</span></td>
+        <td>{{ a.created_at|dt }}</td>
+        <td>{% if a.profile_id %}<a href="{{ url_for('dashboard.profile_details', profile_id=a.profile_id) }}">{{ a.profile_name }}</a>{% if a.profile_count > 1 %} <span class="muted">+{{ a.profile_count - 1 }}</span>{% endif %}{% else %}<span class="muted">none</span>{% endif %}</td>
+        <td class="actions">
+          <button class="btn sm" formaction="{{ url_for('dashboard.account_refresh', account_id=a.id) }}">Refresh token</button>
+          {% if a.connection_status == 'Connected' %}
+          <button class="btn sm" formaction="{{ url_for('dashboard.account_disconnect', account_id=a.id) }}" onclick="return confirm('Disconnect {{ a.email }}? Tokens will be revoked and removed.')">Disconnect</button>
+          {% endif %}
+          <button class="btn sm danger" formaction="{{ url_for('dashboard.account_delete', account_id=a.id) }}" onclick="return confirm('Delete {{ a.email }} and its browser profiles?')">Delete</button>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">No accounts yet. Click “Add Google Account” to connect one.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</form>
+{% endblock %}

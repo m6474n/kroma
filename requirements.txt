@@ -1,0 +1,6 @@
+Flask>=3.0
+google-auth>=2.29
+google-auth-oauthlib>=1.2
+requests>=2.31
+cryptography>=42.0
+psutil>=5.9

@@ -1,0 +1,62 @@
+:root{--bg:#f6f6f4;--card:#fff;--ink:#111;--muted:#6b6b6b;--line:#e4e4e0;--accent:#111;--ok:#1a7f4b;--warn:#b45309;--bad:#b42318}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:inherit}
+code{background:#efefec;padding:1px 6px;border-radius:4px;font-size:12px;word-break:break-all}
+.topbar{display:flex;align-items:center;gap:28px;padding:0 28px;height:56px;background:var(--card);border-bottom:1px solid var(--line)}
+.brand{font-weight:700;font-size:17px;text-decoration:none;letter-spacing:-.02em}
+nav{display:flex;gap:4px}
+nav a{padding:6px 12px;border-radius:6px;text-decoration:none;color:var(--muted)}
+nav a:hover{background:#f0f0ed}
+nav a.on{background:var(--accent);color:#fff}
+main{max-width:1180px;margin:0 auto;padding:28px}
+h1{font-size:22px;margin:0 0 18px;letter-spacing:-.02em}
+h2{font-size:15px;margin:0 0 12px}
+.page-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.page-head h1{margin:0}
+.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:18px}
+.card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.card-head h2{margin:0}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:800px){.row{grid-template-columns:1fr}}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+@media(max-width:800px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+.stat b{display:block;font-size:28px;letter-spacing:-.03em}
+.stat span{color:var(--muted);font-size:12px}
+.stat.warn b{color:var(--warn)}
+.btn{display:inline-block;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 13px;border-radius:7px;font:inherit;cursor:pointer;text-decoration:none}
+.btn:hover{background:#f0f0ed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#333}
+.btn.danger{color:var(--bad)}
+.btn.sm{padding:3px 9px;font-size:12px}
+.toolbar{display:flex;align-items:center;gap:10px;margin:14px 0;flex-wrap:wrap}
+.spacer{flex:1}
+.check{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.filters{display:flex;gap:8px;margin:12px 0}
+input[type=search],input:not([type]),select{padding:7px 10px;border:1px solid var(--line);border-radius:7px;font:inherit;background:#fff}
+.stack label{display:block;font-weight:600;margin-top:12px}
+.stack input{display:block;width:100%;margin-top:4px;font-weight:400}
+.stack .btn{margin-top:14px}
+table{width:100%;border-collapse:collapse}
+table.grid{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:600;background:#fafaf8}
+tr:last-child td{border-bottom:0}
+.actions{white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap}
+.empty{text-align:center;color:var(--muted);padding:34px}
+.avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;display:inline-block}
+.avatar.ph{background:#e8e8e4;text-align:center;line-height:30px;font-weight:600}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:#eee;color:#444}
+.pill.connected,.pill.valid,.pill.running,.pill.auth-signed-in{background:#e3f4ea;color:var(--ok)}
+.pill.expired,.pill.pending,.pill.auth-pending{background:#fdf0dc;color:var(--warn)}
+.pill.revoked,.pill.disconnected{background:#fce6e4;color:var(--bad)}
+.flash{padding:10px 14px;border-radius:8px;margin-bottom:10px;border:1px solid var(--line);background:#fff}
+.flash.success{background:#e3f4ea;border-color:#bfe3cd}
+.flash.error{background:#fce6e4;border-color:#f3c3be}
+.flash.info{background:#eef3fb;border-color:#cddcf2}
+.details{display:grid;grid-template-columns:160px 1fr;gap:8px 16px;margin:0 0 16px}
+.details dt{color:var(--muted)}.details dd{margin:0}
+.actions-row{display:flex;gap:8px;flex-wrap:wrap}

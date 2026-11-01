@@ -1,0 +1,63 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Local data & credentials (sensitive)
+data/*
+!data/.gitkeep
+!data/*.example
+
+# Environment variables & keys
+.env
+.env.*
+!*.example
+*.key
+*.pem
+
+# SQLite database files
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs & temporary files
+*.log
+logs/
+tmp/
+temp/
+
+# Packaging & Distribution
+build/
+dist/
+*.egg-info/
+*.egg
+*.spec
+
