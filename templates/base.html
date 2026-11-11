@@ -16,7 +16,9 @@
     <a class="{{ 'on' if ep == 'dashboard.accounts' }}" href="{{ url_for('dashboard.accounts') }}">Google Accounts</a>
     <a class="{{ 'on' if ep in ('dashboard.profiles','dashboard.profile_details') }}" href="{{ url_for('dashboard.profiles') }}">Browser Profiles</a>
     <a class="{{ 'on' if ep == 'dashboard.automations' }}" href="{{ url_for('dashboard.automations') }}">Automations</a>
+    {% if not release_mode %}
     <a class="{{ 'on' if ep == 'dashboard.settings' }}" href="{{ url_for('dashboard.settings') }}">Settings</a>
+    {% endif %}
   </nav>
   {% if session.get('user') %}
   <div style="display: flex; align-items: center; gap: 0.75rem; margin-left: auto;">

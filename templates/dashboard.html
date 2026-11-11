@@ -51,7 +51,7 @@
   <div class="stat {{ 'warn' if stats.attention }}"><b id="stat_attention">{{ stats.attention }}</b><span>Need attention</span></div>
 </div>
 
-{% if not configured %}
+{% if not configured and not release_mode %}
 <div class="flash info">Google OAuth isn't set up yet. Follow the steps under <a href="{{ url_for('dashboard.settings') }}">Settings</a> to add your <code>client_secret.json</code>.</div>
 {% endif %}
 

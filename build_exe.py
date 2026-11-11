@@ -50,8 +50,23 @@ def build(onefile: bool = False, debug: bool = False):
             print(f"[ERROR] Required resource path missing: {req_dir}")
             sys.exit(1)
 
-    # Bake build flags (RELEASE_MODE / ALLOW_SETUP / Firebase config) into temporary module
+    # Bake build flags & credentials directly into compiled Python bytecode
+    import json
     env_vals = _read_env_vars()
+
+    cs_config = None
+    client_secret_src = ROOT_DIR / "data" / "client_secret.json"
+    if os.environ.get("GOOGLE_CLIENT_SECRET_JSON"):
+        try:
+            cs_config = json.loads(os.environ["GOOGLE_CLIENT_SECRET_JSON"])
+        except Exception:
+            pass
+    elif client_secret_src.exists():
+        try:
+            cs_config = json.loads(client_secret_src.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
     flags_path = ROOT_DIR / "kroma_build_flags.py"
     flags_content = (
         f"# Auto-generated during PyInstaller build\n"
@@ -59,6 +74,7 @@ def build(onefile: bool = False, debug: bool = False):
         f"ALLOW_SETUP = {debug}\n"
         f"FIREBASE_WEB_API_KEY = {env_vals.get('FIREBASE_WEB_API_KEY', '')!r}\n"
         f"FIREBASE_PROJECT_ID = {env_vals.get('FIREBASE_PROJECT_ID', 'kroma-26615')!r}\n"
+        f"GOOGLE_CLIENT_SECRET_CONFIG = {cs_config!r}\n"
     )
     flags_path.write_text(flags_content, encoding="utf-8")
 
@@ -94,13 +110,6 @@ def build(onefile: bool = False, debug: bool = False):
         f"{ROOT_DIR / 'data' / 'extensions' / 'kroma_vpn'}{sep}data/extensions/kroma_vpn",
         "--add-data",
         f"{ROOT_DIR / 'data' / 'extensions' / 'urban_vpn'}{sep}data/extensions/urban_vpn",
-    ])
-
-    client_secret_src = ROOT_DIR / "data" / "client_secret.json"
-    if client_secret_src.exists():
-        args.extend(["--add-data", f"{client_secret_src}{sep}data"])
-
-    args.extend([
         # Hidden imports
         "--hidden-import",
         "kroma_build_flags",
@@ -191,9 +200,6 @@ def build(onefile: bool = False, debug: bool = False):
         dst_ext = target_data_dir / "extensions" / folder_name
         if src_ext.exists() and not dst_ext.exists():
             shutil.copytree(src_ext, dst_ext, dirs_exist_ok=True)
-
-    if client_secret_src.exists():
-        shutil.copy2(client_secret_src, target_data_dir / "client_secret.json")
 
     print("\n" + "=" * 60)
     print(f"  BUILD COMPLETE ({'DEBUG' if debug else 'RELEASE'})!")

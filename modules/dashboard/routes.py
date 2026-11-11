@@ -196,7 +196,11 @@ def logout():
 
 @bp.app_context_processor
 def _inject():
-    return {"csrf_token": csrf_token}
+    return {
+        "csrf_token": csrf_token,
+        "release_mode": config.RELEASE_MODE,
+        "allow_setup": config.ALLOW_SETUP,
+    }
 
 
 def _back(default="dashboard.index"):
@@ -690,6 +694,8 @@ def automation_delete(auto_id):
 # -------------------------------------------------------------- settings
 @bp.route("/settings", methods=["GET", "POST"])
 def settings():
+    if config.RELEASE_MODE:
+        abort(404)
     from modules.auth import user_auth, firebase_auth, firestore
     if request.method == "POST":
         set_setting("chrome_path", request.form.get("chrome_path", "").strip())
@@ -733,13 +739,15 @@ def settings():
         effective_dir=str(prm.profiles_root()),
         firebase_web_api_key=firebase_auth.get_firebase_api_key(),
         firebase_project_id=firestore.get_firebase_project_id(),
-        client_secret_exists=CLIENT_SECRET_PATH.exists(),
+        client_secret_exists=oauth.client_configured(),
         client_secret_path=str(CLIENT_SECRET_PATH),
     )
 
 
 @bp.post("/settings/client-secret")
 def settings_client_secret():
+    if config.RELEASE_MODE:
+        abort(404)
     import json
     raw = request.form.get("client_secret_json", "").strip()
     if not raw:
@@ -760,6 +768,8 @@ def settings_client_secret():
 
 @bp.post("/settings/firebase-sync")
 def settings_firebase_sync():
+    if config.RELEASE_MODE:
+        abort(404)
     from database.db import now_iso
     from modules.auth import firebase_auth, firestore
 

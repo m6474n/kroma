@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
-from config import CLIENT_SECRET_PATH, FERNET_KEY_PATH, REVOKE_URL, TOKEN_URI, ensure_dirs
+from config import FERNET_KEY_PATH, REVOKE_URL, TOKEN_URI, ensure_dirs, get_client_secret_config
 from database.db import db, now_iso
 
 
@@ -52,7 +52,7 @@ def token_status(row) -> str:
 
 
 def _client_info() -> dict:
-    data = json.loads(CLIENT_SECRET_PATH.read_text())
+    data = get_client_secret_config() or {}
     return data.get("web") or data.get("installed") or {}
 
 
@@ -64,9 +64,9 @@ def refresh(account_id: str) -> tuple[bool, str]:
     refresh_token = decrypt(row["refresh_token_encrypted"])
     if not refresh_token:
         return False, "No refresh token stored; reconnect the account."
-    if not CLIENT_SECRET_PATH.exists():
-        return False, "client_secret.json missing."
     info = _client_info()
+    if not info:
+        return False, "Google OAuth client configuration missing."
     creds = Credentials(
         token=None,
         refresh_token=refresh_token,

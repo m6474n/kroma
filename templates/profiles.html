@@ -12,7 +12,7 @@
   </div>
 </div>
 {% if not chrome %}
-<div class="flash error">Chrome/Chromium wasn't found. Set its path in <a href="{{ url_for('dashboard.settings') }}">Settings</a> before launching profiles.</div>
+<div class="flash error">Chrome/Chromium wasn't found.{% if not release_mode %} Set its path in <a href="{{ url_for('dashboard.settings') }}">Settings</a> before launching profiles.{% else %} Please install Google Chrome.{% endif %}</div>
 {% endif %}
 
 <form method="get" class="filters">

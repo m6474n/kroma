@@ -74,6 +74,23 @@ if _cs_env:
     CLIENT_SECRET_PATH = _cs_path if _cs_path.is_absolute() else (BASE_DIR / _cs_path)
 else:
     CLIENT_SECRET_PATH = DATA_DIR / "client_secret.json"
+
+
+def get_client_secret_config() -> dict | None:
+    """Return Google OAuth client config from compiled build flags or local file."""
+    import json
+    if _bf is not None:
+        baked = getattr(_bf, "GOOGLE_CLIENT_SECRET_CONFIG", None)
+        if isinstance(baked, dict) and any(k in baked for k in ("web", "installed")):
+            return baked
+    if CLIENT_SECRET_PATH.exists():
+        try:
+            data = json.loads(CLIENT_SECRET_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and any(k in data for k in ("web", "installed")):
+                return data
+        except Exception:
+            pass
+    return None
 FERNET_KEY_PATH = DATA_DIR / "secret.key"
 FLASK_SECRET_PATH = DATA_DIR / "flask_secret"
 

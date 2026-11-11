@@ -4,7 +4,7 @@ import os
 import requests
 from google_auth_oauthlib.flow import Flow
 
-from config import CLIENT_SECRET_PATH, SCOPES, USERINFO_URL
+from config import SCOPES, USERINFO_URL, get_client_secret_config
 
 # Local http redirect on localhost is allowed for development.
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -13,12 +13,15 @@ os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 
 def client_configured() -> bool:
-    return CLIENT_SECRET_PATH.exists()
+    return get_client_secret_config() is not None
 
 
 def _flow(redirect_uri: str, state: str | None = None) -> Flow:
-    return Flow.from_client_secrets_file(
-        str(CLIENT_SECRET_PATH), scopes=SCOPES, redirect_uri=redirect_uri, state=state
+    cfg = get_client_secret_config()
+    if not cfg:
+        raise FileNotFoundError("Google OAuth client configuration is missing.")
+    return Flow.from_client_config(
+        cfg, scopes=SCOPES, redirect_uri=redirect_uri, state=state
     )
 
 
