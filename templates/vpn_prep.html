@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Kroma · VPN Activation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      max-width: 520px;
+      width: 100%;
+      padding: 32px;
+      text-align: center;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(227, 179, 65, 0.15);
+      border: 1px solid rgba(227, 179, 65, 0.4);
+      color: #f2cc60;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #f2cc60;
+      box-shadow: 0 0 8px #f2cc60;
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 12px;
+    }
+    .instructions {
+      background: #21262d;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 18px 0;
+      text-align: left;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .instructions ol {
+      padding-left: 20px;
+    }
+    .instructions li {
+      margin-bottom: 6px;
+    }
+    .instructions b {
+      color: #58a6ff;
+    }
+    .timer-wrap {
+      margin: 24px 0 16px;
+    }
+    .timer-num {
+      font-size: 48px;
+      font-weight: 800;
+      color: #56d364;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .timer-label {
+      font-size: 13px;
+      color: #8b949e;
+      margin-top: 6px;
+    }
+    .progress-bar {
+      height: 6px;
+      background: #30363d;
+      border-radius: 99px;
+      overflow: hidden;
+      margin: 16px 0 24px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #1f6feb, #56d364);
+      width: 100%;
+      transition: width 1s linear;
+    }
+    .btn-go {
+      display: inline-block;
+      width: 100%;
+      padding: 12px 20px;
+      background: #238636;
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn-go:hover {
+      background: #2ea043;
+    }
+    .target-url {
+      font-size: 12px;
+      color: #8b949e;
+      margin-top: 14px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">
+      <span class="pulse-dot"></span>
+      VPN Activation Window
+    </div>
+    <h1>Activate Urban VPN (UK)</h1>
+
+    <div class="instructions">
+      <ol>
+        <li>Click the <b>Urban VPN</b> puzzle icon in Chrome toolbar.</li>
+        <li>Select <b>United Kingdom</b> and click Connect.</li>
+        <li>Once connected, page will auto-launch target URL.</li>
+      </ol>
+    </div>
+
+    <div class="timer-wrap">
+      <div class="timer-num" id="countdown">{{ wait_seconds }}</div>
+      <div class="timer-label">seconds remaining before opening target</div>
+    </div>
+
+    <div class="progress-bar">
+      <div class="progress-fill" id="pfill"></div>
+    </div>
+
+    <button class="btn-go" id="goBtn" onclick="redirectNow()">
+      ⚡ Connected! Open Target URL Now
+    </button>
+
+    <div class="target-url">
+      Target: <span id="targetDisplay">{{ target_url }}</span>
+    </div>
+  </div>
+
+  <script>
+    const targetUrl = {{ target_url|tojson }};
+    const totalSeconds = parseInt({{ wait_seconds|tojson }}) || 15;
+    let remaining = totalSeconds;
+
+    const countEl = document.getElementById("countdown");
+    const fillEl = document.getElementById("pfill");
+
+    function redirectNow() {
+      window.location.replace(targetUrl);
+    }
+
+    const interval = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(interval);
+        countEl.textContent = "0";
+        fillEl.style.width = "0%";
+        redirectNow();
+      } else {
+        countEl.textContent = remaining;
+        const pct = Math.max(0, (remaining / totalSeconds) * 100);
+        fillEl.style.width = pct + "%";
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

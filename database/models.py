@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS automations (
     url TEXT NOT NULL,
     profile_ids TEXT NOT NULL,
     duration_seconds INTEGER NOT NULL DEFAULT 30,
+    vpn_delay_seconds INTEGER NOT NULL DEFAULT 15,
     is_loop INTEGER NOT NULL DEFAULT 0,
     repeat_count INTEGER NOT NULL DEFAULT 1,
     current_iteration INTEGER NOT NULL DEFAULT 0,
@@ -83,6 +84,10 @@ def init_db():
         conn.executescript(SCHEMA)
         try:
             conn.execute("ALTER TABLE automations ADD COLUMN profile_iterations TEXT NOT NULL DEFAULT '{}'")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE automations ADD COLUMN vpn_delay_seconds INTEGER NOT NULL DEFAULT 15")
         except Exception:
             pass
         for col, col_def in [

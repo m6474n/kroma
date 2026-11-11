@@ -44,8 +44,8 @@ def _security_guard():
             return redirect(url_for("dashboard.setup"))
         return None
 
-    # Login and setup routing
-    if endpoint in ("dashboard.login", "dashboard.setup"):
+    # Login, setup, and vpn preparation interstitial routing
+    if endpoint in ("dashboard.login", "dashboard.setup", "dashboard.vpn_prep"):
         return None
 
     # All other routes require an authenticated session
@@ -554,12 +554,23 @@ def api_dashboard_live():
     }
 
 
+@bp.get("/vpn_prep")
+def vpn_prep():
+    target = request.args.get("target", "https://google.com")
+    try:
+        wait = int(request.args.get("wait", 15))
+    except (ValueError, TypeError):
+        wait = 15
+    return render_template("vpn_prep.html", target_url=target, wait_seconds=wait)
+
+
 @bp.post("/automations/create")
 def automation_create():
     from modules.browser import automation_manager as atm
     name = request.form.get("name", "").strip()
     url = request.form.get("url", "").strip()
     duration = int(request.form.get("duration_seconds", 30))
+    vpn_delay = int(request.form.get("vpn_delay_seconds", 15))
     is_loop = request.form.get("is_loop") == "1"
     repeat_count = int(request.form.get("repeat_count", 1))
     profile_ids = request.form.getlist("profile_ids")
@@ -568,7 +579,7 @@ def automation_create():
         flash("Please select at least one profile for the automation.", "error")
         return redirect(url_for("dashboard.automations"))
     
-    atm.create_automation(name, url, profile_ids, duration, is_loop, repeat_count)
+    atm.create_automation(name, url, profile_ids, duration, is_loop, repeat_count, vpn_delay_seconds=vpn_delay)
     flash(f"Created automation '{name}'.", "success")
     return redirect(url_for("dashboard.automations"))
 

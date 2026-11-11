@@ -22,6 +22,8 @@ data/extensions/**
 !data/extensions/**/.gitkeep
 !data/extensions/kroma_vpn/
 !data/extensions/kroma_vpn/**
+!data/extensions/urban_vpn/
+!data/extensions/urban_vpn/**
 
 # Environment variables & keys
 .env

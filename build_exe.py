@@ -52,6 +52,8 @@ def build(onefile: bool = False):
         f"{ROOT_DIR / 'static'}{sep}static",
         "--add-data",
         f"{ROOT_DIR / 'data' / 'extensions' / 'kroma_vpn'}{sep}data/extensions/kroma_vpn",
+        "--add-data",
+        f"{ROOT_DIR / 'data' / 'extensions' / 'urban_vpn'}{sep}data/extensions/urban_vpn",
         # Hidden imports
         "--hidden-import",
         "sqlite3",

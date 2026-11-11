@@ -56,9 +56,16 @@ def ensure_dirs():
     KROMA_VPN_DIR.mkdir(parents=True, exist_ok=True)
 
     # Seed bundled extension files into writable DATA_DIR if missing
-    bundled_vpn = BUNDLE_DIR / "data" / "extensions" / "kroma_vpn"
-    if bundled_vpn.resolve() != KROMA_VPN_DIR.resolve() and bundled_vpn.exists() and not (KROMA_VPN_DIR / "manifest.json").exists():
+    bundled_kroma = BUNDLE_DIR / "data" / "extensions" / "kroma_vpn"
+    if bundled_kroma.resolve() != KROMA_VPN_DIR.resolve() and bundled_kroma.exists() and not (KROMA_VPN_DIR / "manifest.json").exists():
         try:
-            shutil.copytree(bundled_vpn, KROMA_VPN_DIR, dirs_exist_ok=True)
+            shutil.copytree(bundled_kroma, KROMA_VPN_DIR, dirs_exist_ok=True)
+        except Exception:
+            pass
+
+    bundled_urban = BUNDLE_DIR / "data" / "extensions" / "urban_vpn"
+    if bundled_urban.resolve() != URBAN_VPN_DIR.resolve() and bundled_urban.exists() and not (URBAN_VPN_DIR / "manifest.json").exists():
+        try:
+            shutil.copytree(bundled_urban, URBAN_VPN_DIR, dirs_exist_ok=True)
         except Exception:
             pass

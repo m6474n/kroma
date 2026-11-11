@@ -139,20 +139,22 @@ def create_automation(
     duration_seconds: int = 30,
     is_loop: bool = False,
     repeat_count: int = 1,
+    vpn_delay_seconds: int = 15,
 ) -> str:
     auto_id = str(uuid.uuid4())
     now = now_iso()
     with db() as conn:
         conn.execute(
-            """INSERT INTO automations(id, name, url, profile_ids, duration_seconds,
+            """INSERT INTO automations(id, name, url, profile_ids, duration_seconds, vpn_delay_seconds,
                is_loop, repeat_count, current_iteration, status, profile_iterations, created_at, updated_at)
-               VALUES(?,?,?,?,?,?,?,0,'Stopped','{}',?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,0,'Stopped','{}',?,?)""",
             (
                 auto_id,
                 name or "Untitled Automation",
                 url,
                 json.dumps(profile_ids),
                 max(3, int(duration_seconds)),
+                max(0, int(vpn_delay_seconds)),
                 1 if is_loop else 0,
                 max(1, int(repeat_count)),
                 now,
@@ -194,8 +196,12 @@ def _run_profile_task(
     repeat_count: int,
     stop_event: threading.Event,
     prof_iters: dict,
+    vpn_delay: int = 15,
 ):
     """Runs a single profile: launches, counts down its independent timer, and closes."""
+    from urllib.parse import quote
+    import config
+
     iteration = 0
     try:
         while not stop_event.is_set():
@@ -206,8 +212,15 @@ def _run_profile_task(
                     _live_state[auto_id]["profiles"][pid]["time_remaining"] = duration
                     _live_state[auto_id]["profiles"][pid]["current_iteration"] = iteration
 
-            add_log(auto_id, auto_name, f"Launching '{pname}' ({duration}s timer)...", "info")
-            ok, launch_msg = prm.launch(pid, url=url)
+            # Determine launch URL: if vpn_delay > 0, open visual gateway countdown first
+            if vpn_delay > 0:
+                prep_url = f"http://{config.HOST}:{config.PORT}/vpn_prep?target={quote(url)}&wait={vpn_delay}"
+                add_log(auto_id, auto_name, f"Launching '{pname}' ({vpn_delay}s Urban VPN window)...", "info")
+                ok, launch_msg = prm.launch(pid, url=prep_url)
+            else:
+                add_log(auto_id, auto_name, f"Launching '{pname}' ({duration}s timer)...", "info")
+                ok, launch_msg = prm.launch(pid, url=url)
+
             if not ok:
                 add_log(auto_id, auto_name, f"Could not launch '{pname}': {launch_msg}", "error")
                 with _lock:
@@ -216,7 +229,24 @@ def _run_profile_task(
                 time.sleep(2)
                 continue
 
-            add_log(auto_id, auto_name, f"'{pname}' is active on target URL.", "info")
+            # Wait for VPN activation window before countdown starts
+            if vpn_delay > 0:
+                for sec in range(vpn_delay):
+                    if stop_event.is_set():
+                        break
+                    with _lock:
+                        if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
+                            _live_state[auto_id]["profiles"][pid]["status"] = f"VPN Prep ({vpn_delay - sec}s)"
+                    time.sleep(1)
+
+                if stop_event.is_set():
+                    break
+                with _lock:
+                    if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
+                        _live_state[auto_id]["profiles"][pid]["status"] = "Running"
+                add_log(auto_id, auto_name, f"'{pname}' Urban VPN window complete. Running {duration}s on target URL.", "info")
+            else:
+                add_log(auto_id, auto_name, f"'{pname}' is active on target URL.", "info")
 
             # Countdown individual profile timer
             start_wait = time.time()
@@ -279,6 +309,7 @@ def _run_worker(auto_id: str, stop_event: threading.Event):
     url = auto["url"]
     pids = auto["profile_ids_list"]
     duration = int(auto["duration_seconds"])
+    vpn_delay = int(auto.get("vpn_delay_seconds") if auto.get("vpn_delay_seconds") is not None else 15)
     is_loop = bool(auto["is_loop"])
     repeat_count = int(auto["repeat_count"])
     auto_name = auto["name"]
@@ -322,7 +353,7 @@ def _run_worker(auto_id: str, stop_event: threading.Event):
             break
         t = threading.Thread(
             target=_run_profile_task,
-            args=(auto_id, auto_name, pid, prof_names[pid], url, duration, is_loop, repeat_count, stop_event, prof_iters),
+            args=(auto_id, auto_name, pid, prof_names[pid], url, duration, is_loop, repeat_count, stop_event, prof_iters, vpn_delay),
             daemon=True,
         )
         t.start()

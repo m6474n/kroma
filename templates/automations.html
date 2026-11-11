@@ -93,6 +93,12 @@
       </div>
 
       <div class="form-group" style="margin-bottom:12px;">
+        <label><b>Urban VPN Activation Window (seconds)</b></label>
+        <input type="number" name="vpn_delay_seconds" value="15" min="0" max="120" required style="width:100%; padding:8px; margin-top:4px;">
+        <small class="muted" style="display:block; margin-top:2px;">Gives you 10-15s to activate UK in Urban VPN before auto-redirecting to target URL (set 0 to disable).</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
           <input type="checkbox" name="is_loop" id="is_loop" value="1" onchange="toggleRepeat(this.checked)">
           <b>Loop Continuously</b>
@@ -146,6 +152,7 @@
           <p style="margin:4px 0; font-size:13px;"><b>URL:</b> <code>{{ a.url }}</code></p>
           <p style="margin:4px 0; font-size:13px;">
             <b>Duration:</b> {{ a.duration_seconds }}s | 
+            <b>VPN Window:</b> {{ a.vpn_delay_seconds if a.vpn_delay_seconds is defined else 15 }}s |
             <b>Mode:</b> {% if a.is_loop %}<span style="color:#1a7f4b; font-weight:600;">Infinite Loop</span>{% else %}{{ a.repeat_count }} cycle(s){% endif %} |
             <b>Running:</b> <b id="run_count_{{ a.id }}" style="color:#1a7f4b;">{{ a.running_profiles_count }}</b> of {{ a.profile_ids_list|length }} profiles
           </p>
