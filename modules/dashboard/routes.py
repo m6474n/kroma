@@ -6,6 +6,7 @@ from functools import wraps
 from flask import (Blueprint, abort, flash, jsonify, redirect, render_template, request,
                    session, url_for)
 
+import config
 from config import CLIENT_SECRET_PATH, SCOPES
 from database.db import get_setting, set_setting
 from modules.browser import chromium, profile_manager as prm, process_manager as pm

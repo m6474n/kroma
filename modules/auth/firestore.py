@@ -14,7 +14,7 @@ def get_firebase_project_id() -> str:
     return (
         os.environ.get("FIREBASE_PROJECT_ID", "").strip()
         or get_setting("firebase_project_id", "").strip()
-        or "profile-hub-513404"
+        or "kroma-26615"
     )
 
 
@@ -142,3 +142,4 @@ def get_user_profile(user_id: str, id_token: str | None = None) -> tuple[bool, d
             return False, f"Firestore HTTP error ({exc.code})."
     except Exception as exc:
         return False, f"Failed to connect to Firestore: {exc}"
+
