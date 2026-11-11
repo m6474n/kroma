@@ -35,29 +35,24 @@ def _security_guard():
     from modules.auth import user_auth
     endpoint = request.endpoint or ""
 
-    # Allow static assets unconditionally
-    if endpoint == "static":
+    # Allow static assets and public endpoints unconditionally
+    if endpoint in ("static", "dashboard.login", "dashboard.vpn_prep"):
         return None
 
-    # First-time initial setup
-    if not user_auth.has_users():
+    # Allow setup route when setup is enabled
+    if endpoint == "dashboard.setup":
         if not config.ALLOW_SETUP:
-            # Release build: setup disabled, force login
-            if endpoint not in ("dashboard.login", "dashboard.vpn_prep"):
-                return redirect(url_for("dashboard.login"))
-            return None
-        elif endpoint != "dashboard.setup":
-            return redirect(url_for("dashboard.setup"))
+            return redirect(url_for("dashboard.login"))
         return None
 
-    # Login, setup, and vpn preparation interstitial routing
-    if endpoint in ("dashboard.login", "dashboard.setup", "dashboard.vpn_prep"):
-        return None
-
-    # All other routes require an authenticated session
+    # Check if user is authenticated (covers both Firebase and local sessions)
     user_sess = session.get("user")
     if not user_sess:
-        if request.path.startswith("/api/") and endpoint != "dashboard.api_membership_stream":
+        if endpoint == "dashboard.api_membership_stream":
+            return None
+        if config.ALLOW_SETUP and not user_auth.has_users():
+            return redirect(url_for("dashboard.setup"))
+        if request.path.startswith("/api/"):
             return jsonify({"error": "Authentication required."}), 401
         return redirect(url_for("dashboard.login"))
 
@@ -72,7 +67,11 @@ def _security_guard():
             flash(f"Your membership is {mem_status.upper()}. Access has been locked.", "error")
             return redirect(url_for("dashboard.login"))
         if isinstance(live_prof, dict):
-            user_sess["subscription"] = live_prof
+            user_sess["subscription"] = {
+                "subscription_tier": live_prof.get("subscription_tier", "pro"),
+                "membership_status": live_prof.get("membership_status", "active"),
+                "subscription_status": live_prof.get("subscription_status", "active"),
+            }
             session["user"] = user_sess
 
 
@@ -202,7 +201,11 @@ def login():
                         flash(f"Your membership is {mem_status.upper()}. Please contact administrator to renew.", "error")
                         return render_template("login.html", username=username)
 
-                sub_obj = prof if ok_prof and isinstance(prof, dict) else {"membership_status": "active", "subscription_status": "active", "subscription_tier": "pro"}
+                sub_obj = {
+                    "subscription_tier": prof.get("subscription_tier", "pro") if ok_prof and isinstance(prof, dict) else "pro",
+                    "membership_status": prof.get("membership_status", "active") if ok_prof and isinstance(prof, dict) else "active",
+                    "subscription_status": prof.get("subscription_status", "active") if ok_prof and isinstance(prof, dict) else "active",
+                }
                 session["user"] = {
                     "id": uid,
                     "username": username,
