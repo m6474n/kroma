@@ -38,6 +38,8 @@ Manage dozens of persistent Google Chrome profiles, link Google accounts securel
 | Feature | Description |
 |---|---|
 | 🔐 **Official Google OAuth** | Connects via Google's OAuth consent screen. Identity tokens encrypted at rest via Fernet AES-256. |
+| 🔥 **Firebase Authentication** | Secure dashboard access with Email/Password login powered by Google Identity Platform REST API. |
+| 🌐 **Native Proxy / VPN** | HTTP/HTTPS/SOCKS5 per-profile or global tunneling via `--proxy-server`. Auto-connected on launch, zero clicks. |
 | ⚡ **System Chrome Import** | Auto-detects and imports existing signed-in profiles directly from `%LOCALAPPDATA%\Google\Chrome\User Data`. |
 | 🎯 **Isolated Profiles** | Generates dedicated user-data directories with separate cookie jars, sessions, and cache. |
 | ⏱️ **Concurrent Automations** | Launches multiple profiles at the same time, each running its own independent countdown timer. |
@@ -83,6 +85,24 @@ python app.py
 
 Access the dashboard at **[http://localhost:5000](http://localhost:5000)**.
 
+### ☁️ Vercel Deployment
+Kroma is pre-configured for Vercel serverless deployment via [`vercel.json`](vercel.json) and [`api/index.py`](api/index.py).
+
+1. Push repository to GitHub:
+   ```bash
+   git add .
+   git commit -m "feat: ready for vercel"
+   git push origin main
+   ```
+2. Import project in [Vercel Dashboard](https://vercel.com/new).
+3. Set Environment Variables in Vercel:
+   - `SECRET_KEY`: Random 32-character string
+   - `FIREBASE_WEB_API_KEY`: *(Optional)* Your Firebase Web API Key
+4. Deploy: Vercel builds the Python WSGI application automatically.
+
+> [!NOTE]
+> Vercel hosts the web dashboard, user authentication, and profile telemetry. Launching local desktop Chrome windows and Windows `HWND` automation requires a local/desktop machine.
+
 ---
 
 ## 🔑 Google OAuth Setup
@@ -103,7 +123,35 @@ Access the dashboard at **[http://localhost:5000](http://localhost:5000)**.
 
 ---
 
-## 🤖 Browser Automations
+## 🛡️ Urban VPN 1-Click Integration
+
+Kroma includes built-in support for auto-injecting and syncing **Urban VPN** (or any unpacked Chrome extension) across all managed profiles.
+
+### 1. Setup Extension Files
+1. Download the unpacked Urban VPN extension folder (ID `eppiocemhmnlbhjplcgkfeedignghneo`).
+2. Place the unpacked extension files into:
+   ```
+   data/extensions/urban_vpn/
+   ```
+   *(Or specify a custom directory in **Settings → Urban VPN Extension**).*
+
+### 2. Auto-Load on Profile Launch
+- When enabled in **Settings**, Kroma passes `--load-extension` automatically whenever any profile is launched (manually or via automations).
+- Urban VPN appears in the Chrome toolbar ready to use on startup.
+
+### 3. One-Click VPN State Sync (No-Login or With-Login)
+Urban VPN stores consent, privacy agreements, server selection, and account authentication inside Chrome's `Local Extension Settings` LevelDB database.
+
+1. Launch **one profile** (e.g. Master profile).
+2. Open Urban VPN:
+   - **Without Login**: Accept terms & select your desired country/server.
+   - **With Login**: Sign in to your Urban VPN account.
+3. Close the profile window.
+4. On the **Profiles** page or **Profile Details**, click **⚡ Sync VPN to All**.
+5. Kroma replicates the extension's LevelDB state across every profile's `Default/Local Extension Settings/eppiocemhmnlbhjplcgkfeedignghneo`.
+6. Every profile now opens pre-authenticated with the VPN pre-configured without needing repeated manual logins or agreement clicks.
+
+---
 
 Kroma features a multi-threaded automation runner designed for concurrent browsing sessions:
 
@@ -135,7 +183,9 @@ kroma/
 ├── data/                       # Local SQLite DB, encrypted keys & profiles
 │   ├── profilehub.db
 │   ├── secret.key
-│   └── client_secret.json
+│   ├── client_secret.json
+│   └── extensions/             # Unpacked Chrome extensions (Urban VPN)
+│       └── urban_vpn/
 ├── database/
 │   ├── db.py                   # SQLite connection & settings helper
 │   └── models.py               # Table schemas & startup state recovery
@@ -170,6 +220,7 @@ Kroma provides live JSON polling APIs:
 | `GET` | `/api/automations/status` | Returns real-time status of all automations, timers, and iterations |
 | `POST` | `/automations/<id>/start` | Triggers background execution threads for automation |
 | `POST` | `/automations/<id>/stop` | Gracefully closes all linked profiles and stops execution |
+| `POST` | `/profiles/<id>/sync_vpn` | Replicates Urban VPN state from source profile to all other profiles |
 
 ---
 

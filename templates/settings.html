@@ -15,7 +15,84 @@
       <input name="profiles_dir" value="{{ profiles_dir }}" placeholder="{{ effective_dir }}">
     </label>
     <p class="muted">Currently: <code>{{ effective_dir }}</code>. Changing it only affects <i>new</i> profiles.</p>
-    <button class="btn primary">Save</button>
+    
+    <hr style="border:0; border-top:1px solid var(--line); margin: 18px 0;">
+    
+    <h2>Urban VPN &amp; Extensions</h2>
+    <p>Status: {% if urban_vpn_detected %}<span class="pill valid">Urban VPN Ready (manifest.json found)</span>{% else %}<span class="pill expired">Urban VPN Folder Empty / Missing manifest.json</span>{% endif %}</p>
+    
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:12px;">
+      <input type="checkbox" name="urban_vpn_enabled" value="1" {% if urban_vpn_enabled %}checked{% endif %}>
+      <b>Auto-load Urban VPN on all browser launches</b>
+    </label>
+
+    <label>Urban VPN Unpacked Extension Folder
+      <input name="urban_vpn_path" value="{{ urban_vpn_path }}" placeholder="{{ urban_vpn_default }}">
+    </label>
+    <p class="muted">Default: <code>{{ urban_vpn_default }}</code>. Place the unpacked Urban VPN extension files (containing <code>manifest.json</code>) here.</p>
+    
+    <div style="background:#fafaf8; border:1px solid #e4e4e0; padding:12px; border-radius:8px; margin-top:10px; font-size:13px;">
+      <b>1-Click Setup Guide:</b>
+      <ol style="margin:6px 0 0; padding-left:20px;">
+        <li>Place your unpacked Urban VPN extension in <code>{{ urban_vpn_default }}</code>.</li>
+        <li>Launch any profile from the <b>Browser Profiles</b> tab.</li>
+        <li>Set up Urban VPN once in that browser window (either log in or click "Agree" for free without login, choose location).</li>
+        <li>Go to that profile in ProfileHub and click <b>⚡ Sync VPN to All Profiles</b>.</li>
+        <li>All other profiles are instantly pre-configured with the same session!</li>
+      </ol>
+    </div>
+
+    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;">
+
+    <h3 style="margin-top: 0; font-size: 1.1rem;">🌐 Global Default Proxy / VPN (Auto-Connect)</h3>
+    <p class="muted">Optional fallback proxy. Any profile without its own custom proxy will automatically connect through this proxy upon launch via native Chrome flags.</p>
+
+    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; margin-bottom: 0.75rem;">
+      <input type="checkbox" name="default_proxy_enabled" value="1" {% if default_proxy_enabled %}checked{% endif %}>
+      Enable Global Default Proxy
+    </label>
+
+    <div style="display: grid; grid-template-columns: 120px 1fr 120px; gap: 0.75rem; margin-bottom: 0.75rem;">
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Type</label>
+        <select name="default_proxy_type" class="input" style="width: 100%; padding: 0.4rem;">
+          <option value="http" {% if default_proxy_type == 'http' %}selected{% endif %}>HTTP</option>
+          <option value="https" {% if default_proxy_type == 'https' %}selected{% endif %}>HTTPS</option>
+          <option value="socks5" {% if default_proxy_type == 'socks5' %}selected{% endif %}>SOCKS5</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Host / IP</label>
+        <input type="text" name="default_proxy_host" value="{{ default_proxy_host }}" placeholder="e.g. 198.51.100.1" style="width: 100%; padding: 0.4rem;">
+      </div>
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Port</label>
+        <input type="number" name="default_proxy_port" value="{{ default_proxy_port }}" placeholder="8080" style="width: 100%; padding: 0.4rem;">
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Username (Optional)</label>
+        <input type="text" name="default_proxy_user" value="{{ default_proxy_user }}" placeholder="Proxy username" style="width: 100%; padding: 0.4rem;">
+      </div>
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Password (Optional)</label>
+        <input type="password" name="default_proxy_pass" value="{{ default_proxy_pass }}" placeholder="Proxy password" style="width: 100%; padding: 0.4rem;">
+      </div>
+    </div>
+
+    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;">
+
+    <h3 style="margin-top: 0; font-size: 1.1rem;">🔥 Firebase Authentication</h3>
+    <p class="muted">Protect Kroma with Firebase Email/Password Authentication. When configured, users must sign in before accessing the dashboard.</p>
+
+    <label>Firebase Web API Key
+      <input name="firebase_web_api_key" value="{{ firebase_web_api_key }}" placeholder="AIzaSy...">
+    </label>
+    <p class="muted">Find this in your <b>Firebase Console</b> → <i>Project Settings → General → Web API Key</i>. Make sure <b>Email/Password</b> provider is enabled under <i>Build → Authentication → Sign-in method</i>.</p>
+
+    <button class="btn primary" style="margin-top:16px;">Save Settings</button>
   </form>
 </section>
 

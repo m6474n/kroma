@@ -16,6 +16,12 @@ venv.bak/
 data/*
 !data/.gitkeep
 !data/*.example
+!data/extensions/
+data/extensions/**
+!data/extensions/**/
+!data/extensions/**/.gitkeep
+!data/extensions/kroma_vpn/
+!data/extensions/kroma_vpn/**
 
 # Environment variables & keys
 .env

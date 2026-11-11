@@ -61,6 +61,48 @@ def create_or_bind_profile(account_id: str, email: str, pre_profile_id: str | No
                VALUES(?,?,?,?,'Stopped','Signed in',?,?)""",
             (profile_id, account_id, name, str(directory), now, now),
         )
+    preinstall_vpn_profile(directory)
+    return profile_id, name
+
+
+def preinstall_vpn_profile(profile_dir: str | Path, profile_directory_name: str | None = None):
+    """Ensure official Urban VPN descriptors and pre-activation state exist in profile."""
+    p_dir = Path(profile_dir)
+    sub = profile_directory_name or "Default"
+    vpn_ids = ("eppiocemhmnlbhjplcgkofciiegomcon", "eppiocemhmnlbhjplcgkfeedignghneo")
+
+    # 1. Write External Extensions JSON descriptors
+    ext_dir = p_dir / "External Extensions"
+    try:
+        ext_dir.mkdir(parents=True, exist_ok=True)
+        descriptor = '{\n  "external_update_url": "https://clients2.google.com/service/update2/crx"\n}\n'
+        for ext_id in vpn_ids:
+            desc_file = ext_dir / f"{ext_id}.json"
+            if not desc_file.exists():
+                desc_file.write_text(descriptor, encoding="utf-8")
+    except Exception:
+        pass
+
+    # 2. Pre-seed LevelDB / Extension state if another profile has configured it
+    try:
+        dest_local = p_dir / sub / "Local Extension Settings"
+        for ext_id in vpn_ids:
+            target_folder = dest_local / ext_id
+            if target_folder.exists() and any(target_folder.iterdir()):
+                continue
+
+            source_found = None
+            for p in list_profiles():
+                cand = Path(p["profile_directory"]) / (p.get("profile_directory_name") or "Default") / "Local Extension Settings" / ext_id
+                if cand.exists() and any(cand.iterdir()):
+                    source_found = cand
+                    break
+
+            if source_found:
+                target_folder.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(source_found, target_folder, dirs_exist_ok=True)
+    except Exception:
+        pass
 def import_from_system_chrome() -> list[dict]:
     """Link all profiles found in default installed Google Chrome into ProfileHub directly."""
     sys_profiles = chromium.list_system_chrome_profiles()
@@ -118,6 +160,7 @@ def import_from_system_chrome() -> list[dict]:
                    VALUES(?,?,?,?,?,'Stopped','Signed in',?,?)""",
                 (profile_id, account_id, profile_name, data_dir, dir_name, now, now),
             )
+            preinstall_vpn_profile(data_dir, dir_name)
             results.append({"name": sp["name"], "email": sp["email"], "status": "imported", "message": profile_name})
             
     return results
@@ -162,6 +205,7 @@ def generate(account_ids: list[str], force: bool = False) -> list[dict]:
                        VALUES(?,?,?,?,'Stopped','Pending',?,?)""",
                     (profile_id, account_id, name, str(directory), now, now),
                 )
+                preinstall_vpn_profile(directory)
                 _set_job(conn, job_id, "completed", None, profile_id, done=True)
                 results.append({"email": acc["email"], "status": "created", "message": name})
             except (OSError, sqlite3.Error) as exc:
@@ -231,6 +275,7 @@ def launch_browser(
     email: str = "",
     url: str | None = None,
     profile_directory_name: str | None = None,
+    proxy_config: dict | None = None,
 ) -> tuple[bool, str]:
     chrome = chromium.find_chrome()
     if not chrome:
@@ -243,11 +288,38 @@ def launch_browser(
             email=email,
             url=url,
             profile_directory_name=profile_directory_name,
+            proxy_config=proxy_config,
         )
         pm.launch(cmd, profile_dir=profile_dir, profile_directory_name=profile_directory_name)
     except OSError as exc:
         return False, f"Could not start browser: {exc}"
     return True, "Launched."
+
+
+def get_profile_proxy(p: dict) -> dict | None:
+    """Resolve effective proxy config for a profile (profile-specific or global default)."""
+    if p.get("proxy_enabled") and p.get("proxy_host") and p.get("proxy_port"):
+        return {
+            "profile_id": p["id"],
+            "proxy_type": p.get("proxy_type") or "http",
+            "proxy_host": p["proxy_host"],
+            "proxy_port": p["proxy_port"],
+            "proxy_user": p.get("proxy_user"),
+            "proxy_pass": p.get("proxy_pass"),
+        }
+    def_enabled = get_setting("default_proxy_enabled")
+    def_host = get_setting("default_proxy_host")
+    def_port = get_setting("default_proxy_port")
+    if def_enabled == "1" and def_host and def_port:
+        return {
+            "profile_id": "global",
+            "proxy_type": get_setting("default_proxy_type") or "http",
+            "proxy_host": def_host,
+            "proxy_port": int(def_port),
+            "proxy_user": get_setting("default_proxy_user"),
+            "proxy_pass": get_setting("default_proxy_pass"),
+        }
+    return None
 
 
 def launch(profile_id: str, url: str | None = None) -> tuple[bool, str]:
@@ -259,16 +331,80 @@ def launch(profile_id: str, url: str | None = None) -> tuple[bool, str]:
     target_url = url
     if not target_url:
         target_url = "https://myaccount.google.com" if p["authentication_status"] == "Signed in" else chromium.login_url(p["email"])
+
+    proxy_cfg = get_profile_proxy(p)
     ok, msg = launch_browser(
         p["profile_directory"],
         email=p["email"],
         url=target_url,
         profile_directory_name=p.get("profile_directory_name"),
+        proxy_config=proxy_cfg,
     )
     if not ok:
         return False, msg
     _touch(profile_id, "Running")
     return True, f"Launched {p['profile_name']}."
+
+
+def update_profile_proxy(
+    profile_id: str,
+    enabled: bool,
+    proxy_type: str = "http",
+    host: str | None = None,
+    port: int | None = None,
+    user: str | None = None,
+    password: str | None = None,
+) -> bool:
+    with db() as conn:
+        conn.execute(
+            """UPDATE browser_profiles
+               SET proxy_enabled=?, proxy_type=?, proxy_host=?, proxy_port=?,
+                   proxy_user=?, proxy_pass=?, updated_at=?
+               WHERE id=?""",
+            (
+                1 if enabled else 0,
+                proxy_type or "http",
+                host.strip() if host else None,
+                int(port) if port else None,
+                user.strip() if user else None,
+                password.strip() if password else None,
+                now_iso(),
+                profile_id,
+            ),
+        )
+    return True
+
+
+def bulk_set_proxy(
+    profile_ids: list[str],
+    enabled: bool,
+    proxy_type: str = "http",
+    host: str | None = None,
+    port: int | None = None,
+    user: str | None = None,
+    password: str | None = None,
+) -> int:
+    with db() as conn:
+        count = 0
+        for pid in profile_ids:
+            conn.execute(
+                """UPDATE browser_profiles
+                   SET proxy_enabled=?, proxy_type=?, proxy_host=?, proxy_port=?,
+                       proxy_user=?, proxy_pass=?, updated_at=?
+                   WHERE id=?""",
+                (
+                    1 if enabled else 0,
+                    proxy_type or "http",
+                    host.strip() if host else None,
+                    int(port) if port else None,
+                    user.strip() if user else None,
+                    password.strip() if password else None,
+                    now_iso(),
+                    pid,
+                ),
+            )
+            count += 1
+    return count
 
 
 def close(profile_id: str) -> tuple[bool, str]:
@@ -352,3 +488,75 @@ def refresh_auth(profile_id: str) -> str:
         return p["authentication_status"]  # keep a previous/manual confirmation
     set_auth_status(profile_id, status)
     return status
+
+
+# ------------------------------------------------------------------ VPN sync
+def sync_vpn_config(source_profile_id: str, extension_id: str | None = None) -> tuple[bool, str]:
+    """Clone extension settings (login/cookies/state) from source profile to all other profiles."""
+    src_profile = get_profile(source_profile_id)
+    if not src_profile:
+        return False, "Source profile not found."
+
+    candidate_ids = (extension_id,) if extension_id else ("eppiocemhmnlbhjplcgkofciiegomcon", "eppiocemhmnlbhjplcgkfeedignghneo")
+    src_root = Path(src_profile["profile_directory"])
+    src_sub = src_profile.get("profile_directory_name") or "Default"
+    
+    src_folder = None
+    target_id = candidate_ids[0]
+    for cid in candidate_ids:
+        folder = src_root / src_sub / "Local Extension Settings" / cid
+        if folder.exists() and any(folder.iterdir()):
+            src_folder = folder
+            target_id = cid
+            break
+
+    if not src_folder:
+        for cid in candidate_ids:
+            matches = list(src_root.glob(f"**/{cid}"))
+            if matches:
+                src_folder = matches[0]
+                target_id = cid
+                break
+
+    if not src_folder:
+        return False, f"No VPN configuration found in profile '{src_profile['profile_name']}'. Launch it and configure or log in to Urban VPN first."
+
+    all_profs = list_profiles()
+    synced = 0
+    for p in all_profs:
+        if p["id"] == source_profile_id:
+            continue
+        dst_root = Path(p["profile_directory"])
+        dst_sub = p.get("profile_directory_name") or "Default"
+        
+        # Sync to all known IDs so whichever variant Chrome references has the state
+        for out_id in ("eppiocemhmnlbhjplcgkofciiegomcon", "eppiocemhmnlbhjplcgkfeedignghneo"):
+            dst_folder = dst_root / dst_sub / "Local Extension Settings" / out_id
+            try:
+                dst_folder.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(src_folder, dst_folder, dirs_exist_ok=True)
+
+                # Also sync Sync Extension Settings if present
+                src_sync = src_folder.parent.parent / "Sync Extension Settings" / target_id
+                if src_sync.exists():
+                    dst_sync = dst_folder.parent.parent / "Sync Extension Settings" / out_id
+                    dst_sync.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(src_sync, dst_sync, dirs_exist_ok=True)
+
+                # Also sync IndexedDB if present
+                src_idb = src_root / src_sub / "IndexedDB"
+                if src_idb.exists():
+                    for idb_match in src_idb.glob(f"*{target_id}*"):
+                        dst_idb = dst_root / dst_sub / "IndexedDB" / idb_match.name.replace(target_id, out_id)
+                        dst_idb.parent.mkdir(parents=True, exist_ok=True)
+                        if idb_match.is_dir():
+                            shutil.copytree(idb_match, dst_idb, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(idb_match, dst_idb)
+            except Exception:
+                continue
+        synced += 1
+
+    return True, f"Successfully synced Urban VPN configuration from '{src_profile['profile_name']}' to {synced} profile(s)."
+
+    return True, f"Successfully synced Urban VPN configuration from '{src_profile['profile_name']}' to {synced} profile(s)."

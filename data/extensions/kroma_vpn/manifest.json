@@ -1,0 +1,23 @@
+{
+  "name": "Kroma Auto-VPN",
+  "version": "1.0.0",
+  "manifest_version": 3,
+  "description": "Automatic Zero-Click Multi-Profile VPN for Kroma",
+  "permissions": [
+    "proxy",
+    "storage",
+    "webRequest",
+    "webRequestAuthProvider"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Kroma Auto-VPN"
+  }
+}
+

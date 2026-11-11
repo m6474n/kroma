@@ -3,7 +3,7 @@ import secrets
 import shutil
 from functools import wraps
 
-from flask import (Blueprint, abort, flash, redirect, render_template, request,
+from flask import (Blueprint, abort, flash, jsonify, redirect, render_template, request,
                    session, url_for)
 
 from config import CLIENT_SECRET_PATH, SCOPES
@@ -23,10 +23,96 @@ def csrf_token() -> str:
 
 @bp.before_app_request
 def _csrf_protect():
+    # 1. CSRF Protection for POST requests
     if request.method == "POST":
-        sent = request.form.get("csrf_token", "")
-        if not sent or not secrets.compare_digest(sent, session.get("csrf", "")):
+        sent = request.form.get("csrf_token") or request.headers.get("X-CSRFToken") or ""
+        expected = session.get("csrf", "")
+        if not sent or not expected or not secrets.compare_digest(sent, expected):
             abort(400, "Invalid or missing CSRF token. Reload the page and try again.")
+
+    # 2. Firebase Authentication Guard
+    from modules.auth import firebase_auth
+    if firebase_auth.is_firebase_configured():
+        endpoint = request.endpoint or ""
+        allowed = (
+            "dashboard.login",
+            "dashboard.register",
+            "dashboard.logout",
+            "dashboard.settings",
+            "static",
+        )
+        if endpoint not in allowed and not session.get("user"):
+            return redirect(url_for("dashboard.login"))
+
+
+@bp.route("/login", methods=["GET", "POST"])
+def login():
+    from modules.auth import firebase_auth
+    if session.get("user"):
+        return redirect(url_for("dashboard.index"))
+
+    is_configured = firebase_auth.is_firebase_configured()
+    if request.method == "POST":
+        if not is_configured:
+            flash("Firebase Web API Key is not configured. Please set it in Settings first.", "error")
+            return redirect(url_for("dashboard.login"))
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        ok, res = firebase_auth.sign_in_with_email_password(email, password)
+        if ok:
+            session["user"] = {
+                "email": res.get("email", email),
+                "localId": res.get("localId", ""),
+                "idToken": res.get("idToken", ""),
+            }
+            flash(f"Welcome back, {email}!", "success")
+            return redirect(url_for("dashboard.index"))
+        else:
+            flash(str(res), "error")
+            return render_template("login.html", is_configured=is_configured, email=email)
+
+    return render_template("login.html", is_configured=is_configured)
+
+
+@bp.route("/register", methods=["GET", "POST"])
+def register():
+    from modules.auth import firebase_auth
+    if session.get("user"):
+        return redirect(url_for("dashboard.index"))
+
+    is_configured = firebase_auth.is_firebase_configured()
+    if request.method == "POST":
+        if not is_configured:
+            flash("Firebase Web API Key is not configured. Please set it in Settings first.", "error")
+            return redirect(url_for("dashboard.register"))
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        if password != confirm:
+            flash("Passwords do not match.", "error")
+            return render_template("register.html", is_configured=is_configured, email=email)
+
+        ok, res = firebase_auth.sign_up_with_email_password(email, password)
+        if ok:
+            session["user"] = {
+                "email": res.get("email", email),
+                "localId": res.get("localId", ""),
+                "idToken": res.get("idToken", ""),
+            }
+            flash(f"Account created successfully. Welcome, {email}!", "success")
+            return redirect(url_for("dashboard.index"))
+        else:
+            flash(str(res), "error")
+            return render_template("register.html", is_configured=is_configured, email=email)
+
+    return render_template("register.html", is_configured=is_configured)
+
+
+@bp.post("/logout")
+def logout():
+    session.pop("user", None)
+    flash("You have been signed out.", "info")
+    return redirect(url_for("dashboard.login"))
 
 
 @bp.app_context_processor
@@ -251,6 +337,150 @@ def profile_auth(profile_id):
     return _back("dashboard.profiles")
 
 
+@bp.post("/profiles/<profile_id>/sync_vpn")
+def profile_sync_vpn(profile_id):
+    ok, msg = prm.sync_vpn_config(profile_id)
+    flash(msg, "success" if ok else "error")
+    return _back("dashboard.profiles")
+
+
+@bp.post("/profiles/<profile_id>/proxy")
+def profile_set_proxy(profile_id):
+    enabled = request.form.get("proxy_enabled") == "1"
+    ptype = request.form.get("proxy_type", "http").strip()
+    host = request.form.get("proxy_host", "").strip()
+    port = request.form.get("proxy_port", "").strip()
+    user = request.form.get("proxy_user", "").strip()
+    password = request.form.get("proxy_pass", "").strip()
+
+    prm.update_profile_proxy(
+        profile_id,
+        enabled=enabled,
+        proxy_type=ptype,
+        host=host or None,
+        port=int(port) if port.isdigit() else None,
+        user=user or None,
+        password=password or None,
+    )
+    flash("Proxy settings updated for profile.", "success")
+    return _back("dashboard.profiles")
+
+
+@bp.post("/api/proxy/bulk")
+def api_bulk_proxy():
+    data = request.get_json(silent=True) or request.form
+    profile_ids = data.get("profile_ids")
+    if isinstance(profile_ids, str):
+        import json
+        try:
+            profile_ids = json.loads(profile_ids)
+        except Exception:
+            profile_ids = [p.strip() for p in profile_ids.split(",") if p.strip()]
+    if not profile_ids:
+        profile_ids = [p["id"] for p in prm.list_profiles()]
+
+    proxy_list_raw = str(data.get("proxy_list", "")).strip()
+    ptype = str(data.get("proxy_type", "http")).strip()
+
+    # Mode A: Multi-Proxy List (Assigns 1 unique proxy per profile)
+    if proxy_list_raw:
+        lines = [l.strip() for l in proxy_list_raw.splitlines() if l.strip()]
+        count = 0
+        for idx, pid in enumerate(profile_ids):
+            if not lines:
+                break
+            line = lines[idx % len(lines)]
+            # Clean protocol prefix if present
+            for prefix in ("http://", "https://", "socks5://"):
+                if line.lower().startswith(prefix):
+                    ptype = prefix.replace("://", "")
+                    line = line[len(prefix):]
+                    break
+
+            parts = line.split(":")
+            host, port, user, pwd = None, None, None, None
+            if len(parts) == 4:
+                host, port, user, pwd = parts[0], parts[1], parts[2], parts[3]
+            elif len(parts) == 2:
+                host, port = parts[0], parts[1]
+            elif "@" in line:
+                # user:pass@host:port
+                creds, netloc = line.split("@", 1)
+                user, pwd = creds.split(":", 1) if ":" in creds else (creds, None)
+                host, port = netloc.split(":", 1) if ":" in netloc else (netloc, "8080")
+
+            if host and port and port.isdigit():
+                prm.update_profile_proxy(
+                    pid,
+                    enabled=True,
+                    proxy_type=ptype,
+                    host=host,
+                    port=int(port),
+                    user=user,
+                    password=pwd,
+                )
+                count += 1
+        if request.is_json:
+            return jsonify({"ok": True, "count": count})
+        flash(f"Distributed unique proxies across {count} profile(s).", "success")
+        return _back("dashboard.profiles")
+
+    # Mode B: Single Proxy for all profiles
+    enabled = str(data.get("proxy_enabled")) in ("1", "true", "True")
+    host = str(data.get("proxy_host", "")).strip()
+    port_val = str(data.get("proxy_port", "")).strip()
+    port = int(port_val) if port_val.isdigit() else None
+    user = str(data.get("proxy_user", "")).strip() or None
+    password = str(data.get("proxy_pass", "")).strip() or None
+
+    count = prm.bulk_set_proxy(
+        profile_ids,
+        enabled=enabled,
+        proxy_type=ptype,
+        host=host or None,
+        port=port,
+        user=user,
+        password=password,
+    )
+    if request.is_json:
+        return jsonify({"ok": True, "count": count})
+    flash(f"Proxy configured for {count} profile(s).", "success")
+    return _back("dashboard.profiles")
+
+
+@bp.post("/api/proxy/test")
+def api_test_proxy():
+    import urllib.request
+    import time
+    import json
+
+    data = request.get_json(silent=True) or request.form
+    ptype = (data.get("proxy_type") or "http").strip().lower()
+    host = str(data.get("proxy_host", "")).strip()
+    port = str(data.get("proxy_port", "")).strip()
+    user = str(data.get("proxy_user", "")).strip()
+    password = str(data.get("proxy_pass", "")).strip()
+
+    if not host or not port:
+        return jsonify({"ok": False, "error": "Host and Port are required."}), 400
+
+    auth = f"{user}:{password}@" if user and password else ""
+    proxy_url = f"{ptype}://{auth}{host}:{port}"
+
+    start = time.time()
+    try:
+        handler = urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
+        opener = urllib.request.build_opener(handler)
+        req = urllib.request.Request("http://api.ipify.org?format=json", headers={"User-Agent": "Mozilla/5.0 Kroma/1.0"})
+        with opener.open(req, timeout=6) as resp:
+            body = resp.read().decode("utf-8")
+            latency = int((time.time() - start) * 1000)
+            res_json = json.loads(body)
+            return jsonify({"ok": True, "ip": res_json.get("ip"), "latency_ms": latency})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 200
+
+
 @bp.post("/profiles/bulk/<action>")
 def profiles_bulk(action):
     ids = _ids()
@@ -370,15 +600,49 @@ def automation_delete(auto_id):
 # -------------------------------------------------------------- settings
 @bp.route("/settings", methods=["GET", "POST"])
 def settings():
+    from pathlib import Path
+    import config
     if request.method == "POST":
         set_setting("chrome_path", request.form.get("chrome_path", "").strip())
         set_setting("profiles_dir", request.form.get("profiles_dir", "").strip())
+        set_setting("firebase_web_api_key", request.form.get("firebase_web_api_key", "").strip())
+        set_setting("urban_vpn_path", request.form.get("urban_vpn_path", "").strip())
+        set_setting("urban_vpn_enabled", "1" if request.form.get("urban_vpn_enabled") == "1" else "0")
+        set_setting("default_proxy_enabled", "1" if request.form.get("default_proxy_enabled") == "1" else "0")
+        set_setting("default_proxy_type", request.form.get("default_proxy_type", "http").strip())
+        set_setting("default_proxy_host", request.form.get("default_proxy_host", "").strip())
+        set_setting("default_proxy_port", request.form.get("default_proxy_port", "").strip())
+        set_setting("default_proxy_user", request.form.get("default_proxy_user", "").strip())
+        set_setting("default_proxy_pass", request.form.get("default_proxy_pass", "").strip())
         flash("Settings saved.", "success")
         return redirect(url_for("dashboard.settings"))
+
+    custom_vpn = get_setting("urban_vpn_path", "")
+    vpn_dir = Path(custom_vpn) if custom_vpn else config.URBAN_VPN_DIR
+    vpn_detected = (vpn_dir / "manifest.json").exists()
+    vpn_enabled = get_setting("urban_vpn_enabled")
+    if vpn_enabled is None:
+        vpn_enabled = "1" if vpn_detected else "0"
+
     return render_template(
-        "settings.html", chrome_path=get_setting("chrome_path", ""),
-        detected=chromium.find_chrome(), profiles_dir=get_setting("profiles_dir", ""),
-        effective_dir=str(prm.profiles_root()), secret_path=str(CLIENT_SECRET_PATH),
-        configured=oauth.client_configured(), scopes=SCOPES,
+        "settings.html",
+        chrome_path=get_setting("chrome_path", ""),
+        detected=chromium.find_chrome(),
+        profiles_dir=get_setting("profiles_dir", ""),
+        effective_dir=str(prm.profiles_root()),
+        secret_path=str(CLIENT_SECRET_PATH),
+        configured=oauth.client_configured(),
+        scopes=SCOPES,
         redirect_uri=url_for("dashboard.oauth_callback", _external=True),
+        urban_vpn_path=custom_vpn,
+        urban_vpn_default=str(config.URBAN_VPN_DIR),
+        urban_vpn_detected=vpn_detected,
+        urban_vpn_enabled=(vpn_enabled == "1"),
+        default_proxy_enabled=(get_setting("default_proxy_enabled") == "1"),
+        default_proxy_type=get_setting("default_proxy_type", "http"),
+        default_proxy_host=get_setting("default_proxy_host", ""),
+        default_proxy_port=get_setting("default_proxy_port", ""),
+        default_proxy_user=get_setting("default_proxy_user", ""),
+        default_proxy_pass=get_setting("default_proxy_pass", ""),
+        firebase_web_api_key=get_setting("firebase_web_api_key", ""),
     )

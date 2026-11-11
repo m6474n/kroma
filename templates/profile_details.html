@@ -30,6 +30,101 @@
 </section>
 
 <section class="card">
+  <h2>🌐 Native Proxy / VPN (Auto-Connect)</h2>
+  <p class="muted">Attach a dedicated HTTP, HTTPS, or SOCKS5 proxy to this profile. When launched, Chrome auto-routes 100% of traffic through this proxy via native flags with zero clicks or popups.</p>
+  <form method="post" action="{{ url_for('dashboard.profile_set_proxy', profile_id=p.id) }}" id="proxyForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div style="margin-bottom: 1rem;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer;">
+        <input type="checkbox" name="proxy_enabled" value="1" {% if p.proxy_enabled %}checked{% endif %}>
+        Enable Proxy for this Profile
+      </label>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 120px 1fr 140px; gap: 1rem; margin-bottom: 1rem;">
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Type</label>
+        <select name="proxy_type" class="input" style="width: 100%; padding: 0.5rem;">
+          <option value="http" {% if p.proxy_type == 'http' %}selected{% endif %}>HTTP</option>
+          <option value="https" {% if p.proxy_type == 'https' %}selected{% endif %}>HTTPS</option>
+          <option value="socks5" {% if p.proxy_type == 'socks5' %}selected{% endif %}>SOCKS5</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Host / IP</label>
+        <input type="text" name="proxy_host" class="input" placeholder="e.g. 198.51.100.1 or proxy.provider.com" value="{{ p.proxy_host or '' }}" style="width: 100%; padding: 0.5rem;">
+      </div>
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Port</label>
+        <input type="number" name="proxy_port" class="input" placeholder="8080" value="{{ p.proxy_port or '' }}" style="width: 100%; padding: 0.5rem;">
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Username (Optional)</label>
+        <input type="text" name="proxy_user" class="input" placeholder="Proxy username" value="{{ p.proxy_user or '' }}" style="width: 100%; padding: 0.5rem;">
+      </div>
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 500;">Password (Optional)</label>
+        <input type="password" name="proxy_pass" class="input" placeholder="Proxy password" value="{{ p.proxy_pass or '' }}" style="width: 100%; padding: 0.5rem;">
+      </div>
+    </div>
+
+    <div class="actions-row">
+      <button class="btn primary" type="submit">Save Proxy Settings</button>
+      <button class="btn" type="button" id="btnTestProxy">⚡ Test Proxy Connection</button>
+      <span id="proxyTestResult" style="margin-left: 0.5rem; font-size: 0.9rem; align-self: center;"></span>
+    </div>
+  </form>
+</section>
+
+<script>
+document.getElementById('btnTestProxy')?.addEventListener('click', async () => {
+  const form = document.getElementById('proxyForm');
+  const resSpan = document.getElementById('proxyTestResult');
+  const host = form.elements['proxy_host'].value.trim();
+  const port = form.elements['proxy_port'].value.trim();
+  if (!host || !port) {
+    resSpan.innerHTML = '<span style="color: #ef4444;">Please enter host and port first.</span>';
+    return;
+  }
+  resSpan.innerHTML = '<span style="color: #64748b;">Testing proxy connection...</span>';
+  try {
+    const resp = await fetch('{{ url_for("dashboard.api_test_proxy") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': form.elements['csrf_token'].value
+      },
+      body: JSON.stringify({
+        proxy_type: form.elements['proxy_type'].value,
+        proxy_host: host,
+        proxy_port: port,
+        proxy_user: form.elements['proxy_user'].value,
+        proxy_pass: form.elements['proxy_pass'].value
+      })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      resSpan.innerHTML = `<span style="color: #10b981; font-weight: 600;">✓ Connected! Exit IP: ${data.ip} (${data.latency_ms}ms)</span>`;
+    } else {
+      resSpan.innerHTML = `<span style="color: #ef4444;">✗ Failed: ${data.error}</span>`;
+    }
+  } catch (err) {
+    resSpan.innerHTML = `<span style="color: #ef4444;">✗ Network error: ${err.message}</span>`;
+  }
+});
+</script>
+  <p class="muted">Configured or logged in to Urban VPN in this profile? Click below to copy this profile's VPN state, location, and login tokens across all other profiles automatically.</p>
+  <form method="post" action="{{ url_for('dashboard.profile_sync_vpn', profile_id=p.id) }}" onsubmit="return confirm('Sync this profile\'s Urban VPN settings to all other profiles?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn primary" type="submit">⚡ Sync This Profile's VPN to All Profiles</button>
+  </form>
+</section>
+
+<section class="card">
   <h2>Sign-in status</h2>
   <p class="muted">Connecting an account through OAuth does <b>not</b> sign Chrome in. Launch the profile and sign in once on Google's own page; the session then persists in this profile's folder. Kroma can check for a Google session cookie (best effort, works when the browser is closed), or you can set the status yourself.</p>
   <form method="post" class="actions-row" action="{{ url_for('dashboard.profile_auth', profile_id=p.id) }}">

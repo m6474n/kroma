@@ -1,11 +1,17 @@
 """Central configuration for Kroma."""
 import os
+import tempfile
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = Path(os.environ.get("KROMA_DATA", os.environ.get("PROFILEHUB_DATA", BASE_DIR / "data")))
+IS_VERCEL = os.environ.get("VERCEL") == "1"
+_default_data = Path(tempfile.gettempdir()) / "kroma_data" if IS_VERCEL else BASE_DIR / "data"
+DATA_DIR = Path(os.environ.get("KROMA_DATA", os.environ.get("PROFILEHUB_DATA", _default_data)))
 DB_PATH = DATA_DIR / "kroma.db" if not (DATA_DIR / "profilehub.db").exists() else DATA_DIR / "profilehub.db"
 DEFAULT_PROFILES_DIR = DATA_DIR / "profiles"
+EXTENSIONS_DIR = DATA_DIR / "extensions"
+URBAN_VPN_DIR = EXTENSIONS_DIR / "urban_vpn"
+KROMA_VPN_DIR = EXTENSIONS_DIR / "kroma_vpn"
 CLIENT_SECRET_PATH = Path(os.environ.get("GOOGLE_CLIENT_SECRET", DATA_DIR / "client_secret.json"))
 FERNET_KEY_PATH = DATA_DIR / "secret.key"
 FLASK_SECRET_PATH = DATA_DIR / "flask_secret"
@@ -29,3 +35,5 @@ TOKEN_URI = "https://oauth2.googleapis.com/token"
 def ensure_dirs():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     DEFAULT_PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    EXTENSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    URBAN_VPN_DIR.mkdir(parents=True, exist_ok=True)

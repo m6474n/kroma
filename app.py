@@ -1,4 +1,5 @@
 """Kroma entry point.  Run:  python app.py"""
+import os
 import secrets
 
 from flask import Flask
@@ -12,9 +13,22 @@ def create_app() -> Flask:
     init_db()
 
     app = Flask(__name__)
-    if not config.FLASK_SECRET_PATH.exists():
-        config.FLASK_SECRET_PATH.write_text(secrets.token_hex(32))
-    app.secret_key = config.FLASK_SECRET_PATH.read_text()
+    secret_key = os.environ.get("SECRET_KEY")
+    if not secret_key:
+        if not config.FLASK_SECRET_PATH.exists():
+            try:
+                config.FLASK_SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
+                config.FLASK_SECRET_PATH.write_text(secrets.token_hex(32))
+            except OSError:
+                pass
+        if config.FLASK_SECRET_PATH.exists():
+            try:
+                secret_key = config.FLASK_SECRET_PATH.read_text().strip()
+            except OSError:
+                secret_key = secrets.token_hex(32)
+        else:
+            secret_key = secrets.token_hex(32)
+    app.secret_key = secret_key
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 
     from modules.dashboard.routes import bp

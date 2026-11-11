@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS browser_profiles (
     profile_directory_name TEXT,
     browser_status TEXT NOT NULL DEFAULT 'Stopped',
     authentication_status TEXT NOT NULL DEFAULT 'Pending',
+    proxy_enabled INTEGER NOT NULL DEFAULT 0,
+    proxy_type TEXT DEFAULT 'http',
+    proxy_host TEXT,
+    proxy_port INTEGER,
+    proxy_user TEXT,
+    proxy_pass TEXT,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
 );
@@ -71,6 +77,18 @@ def init_db():
             conn.execute("ALTER TABLE automations ADD COLUMN profile_iterations TEXT NOT NULL DEFAULT '{}'")
         except Exception:
             pass
+        for col, col_def in [
+            ("proxy_enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("proxy_type", "TEXT DEFAULT 'http'"),
+            ("proxy_host", "TEXT"),
+            ("proxy_port", "INTEGER"),
+            ("proxy_user", "TEXT"),
+            ("proxy_pass", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE browser_profiles ADD COLUMN {col} {col_def}")
+            except Exception:
+                pass
         # Recovery: jobs left 'running' by an interrupted run are marked failed.
         conn.execute(
             "UPDATE profile_jobs SET job_status='failed', error_message='Interrupted (app stopped)', "

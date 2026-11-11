@@ -1,0 +1,23 @@
+[
+  {"type": "http", "host": "185.199.229.156", "port": 7492, "country": "US-1"},
+  {"type": "http", "host": "198.23.239.134", "port": 6540, "country": "US-2"},
+  {"type": "http", "host": "207.244.217.165", "port": 6712, "country": "US-3"},
+  {"type": "http", "host": "107.172.163.27", "port": 6543, "country": "US-4"},
+  {"type": "http", "host": "64.137.42.112", "port": 5157, "country": "US-5"},
+  {"type": "http", "host": "173.211.30.84", "port": 6641, "country": "US-6"},
+  {"type": "http", "host": "216.10.27.159", "port": 6437, "country": "US-7"},
+  {"type": "http", "host": "167.160.180.203", "port": 6754, "country": "US-8"},
+  {"type": "http", "host": "166.88.58.10", "port": 5735, "country": "US-9"},
+  {"type": "http", "host": "154.36.110.199", "port": 6853, "country": "US-10"},
+  {"type": "http", "host": "173.0.9.70", "port": 5653, "country": "US-11"},
+  {"type": "http", "host": "173.0.9.209", "port": 5792, "country": "US-12"},
+  {"type": "http", "host": "198.46.247.168", "port": 6229, "country": "US-13"},
+  {"type": "http", "host": "198.46.247.166", "port": 6227, "country": "US-14"},
+  {"type": "http", "host": "167.160.180.45", "port": 6596, "country": "US-15"},
+  {"type": "http", "host": "198.23.239.130", "port": 6536, "country": "US-16"},
+  {"type": "http", "host": "64.137.42.114", "port": 5159, "country": "US-17"},
+  {"type": "http", "host": "173.211.30.158", "port": 6715, "country": "US-18"},
+  {"type": "http", "host": "154.36.110.193", "port": 6847, "country": "US-19"},
+  {"type": "http", "host": "207.244.217.185", "port": 6732, "country": "US-20"}
+]
+

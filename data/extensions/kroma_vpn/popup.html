@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 260px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 10px;
+    }
+    .header h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    .status-card {
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .pulse-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 10px #10b981;
+    }
+    .pulse-dot.off {
+      background: #64748b;
+      box-shadow: none;
+    }
+    .status-text {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .details {
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      background: #334155;
+      color: #38bdf8;
+      margin-top: 4px;
+    }
+    .btn {
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      background: #2563eb;
+      color: white;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .btn:hover {
+      background: #1d4ed8;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span>🛡️</span>
+    <h3>Kroma Auto-VPN</h3>
+  </div>
+
+  <div class="status-card">
+    <div class="pulse-dot" id="dot"></div>
+    <div>
+      <div class="status-text" id="statusTitle">Connected</div>
+      <span class="badge" id="protoBadge">AUTO</span>
+    </div>
+  </div>
+
+  <div class="details">
+    <div><b>Server:</b> <span id="serverInfo">Detecting...</span></div>
+    <div><b>Country:</b> <span id="countryInfo">Auto Server</span></div>
+  </div>
+
+  <button class="btn" id="btnReconnect">⚡ Reconnect</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>
+
