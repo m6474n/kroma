@@ -68,4 +68,5 @@ dist/
 *.egg-info/
 *.egg
 *.spec
+kroma_build_flags.py
 

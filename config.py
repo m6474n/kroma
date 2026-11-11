@@ -37,9 +37,28 @@ def _load_env_file():
 
 _load_env_file()
 
+try:
+    import kroma_build_flags as _bf
+except ImportError:
+    _bf = None
+
+if _bf is not None:
+    if getattr(_bf, "FIREBASE_WEB_API_KEY", ""):
+        os.environ.setdefault("FIREBASE_WEB_API_KEY", _bf.FIREBASE_WEB_API_KEY)
+    if getattr(_bf, "FIREBASE_PROJECT_ID", ""):
+        os.environ.setdefault("FIREBASE_PROJECT_ID", _bf.FIREBASE_PROJECT_ID)
+
 IS_VERCEL = os.environ.get("VERCEL") == "1"
-RELEASE_MODE = os.environ.get("RELEASE_MODE", "1" if IS_FROZEN else "0") == "1"
-ALLOW_SETUP = not RELEASE_MODE and os.environ.get("ALLOW_SETUP", "1") == "1"
+_cli_debug = "--debug" in sys.argv
+if _cli_debug:
+    RELEASE_MODE = False
+    ALLOW_SETUP = True
+elif _bf is not None:
+    RELEASE_MODE = bool(getattr(_bf, "RELEASE_MODE", True))
+    ALLOW_SETUP = bool(getattr(_bf, "ALLOW_SETUP", False))
+else:
+    RELEASE_MODE = os.environ.get("RELEASE_MODE", "1" if IS_FROZEN else "0") == "1"
+    ALLOW_SETUP = not RELEASE_MODE and os.environ.get("ALLOW_SETUP", "1") == "1"
 _default_data = Path(tempfile.gettempdir()) / "kroma_data" if IS_VERCEL else BASE_DIR / "data"
 DATA_DIR = Path(os.environ.get("KROMA_DATA", os.environ.get("PROFILEHUB_DATA", _default_data)))
 DB_PATH = DATA_DIR / "kroma.db" if not (DATA_DIR / "profilehub.db").exists() else DATA_DIR / "profilehub.db"

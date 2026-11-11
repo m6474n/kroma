@@ -1,4 +1,10 @@
-"""Build script for packaging Kroma into a standalone Windows executable."""
+"""Build script for packaging Kroma into a standalone Windows (.exe) or macOS (.app) executable.
+
+Usage:
+    python build_exe.py            -> Release build (/setup disabled, login only)
+    python build_exe.py --debug    -> Debug build (/setup enabled for provisioning)
+    python build_exe.py --onefile  -> Single-file EXE (Windows/Linux)
+"""
 import os
 import shutil
 import subprocess
@@ -8,12 +14,34 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent
 
 
-def build(onefile: bool = False):
+def _read_env_vars() -> dict[str, str]:
+    vals = {}
+    env_file = ROOT_DIR / ".env"
+    if not env_file.exists():
+        env_file = ROOT_DIR / ".env.example"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            vals[k.strip()] = v.strip().strip('"').strip("'")
+    # Allow OS env vars to override
+    for key in ("FIREBASE_WEB_API_KEY", "FIREBASE_PROJECT_ID"):
+        if os.environ.get(key):
+            vals[key] = os.environ[key]
+    return vals
+
+
+def build(onefile: bool = False, debug: bool = False):
+    mode_label = "DEBUG (Setup Enabled)" if debug else "RELEASE (Setup Disabled - Login Only)"
+    plat_label = "macOS (.app)" if sys.platform == "darwin" else "Windows (.exe)"
     print("=" * 60)
-    print("  KROMA - Standalone Windows Executable Builder")
+    print(f"  KROMA - Standalone {plat_label} Builder")
     print("=" * 60)
     print(f"  Root directory: {ROOT_DIR}")
-    print(f"  Packaging mode: {'--onefile (Single EXE)' if onefile else '--onedir (Directory bundle)'}")
+    print(f"  Build Mode:     {mode_label}")
+    print(f"  Packaging:      {'--onefile' if onefile else '--onedir / .app'}")
     print("=" * 60)
 
     # Validate essential source directories
@@ -22,10 +50,22 @@ def build(onefile: bool = False):
             print(f"[ERROR] Required resource path missing: {req_dir}")
             sys.exit(1)
 
-    dist_dir = ROOT_DIR / "dist"
-    build_dir = ROOT_DIR / "build"
+    # Bake build flags (RELEASE_MODE / ALLOW_SETUP / Firebase config) into temporary module
+    env_vals = _read_env_vars()
+    flags_path = ROOT_DIR / "kroma_build_flags.py"
+    flags_content = (
+        f"# Auto-generated during PyInstaller build\n"
+        f"RELEASE_MODE = {not debug}\n"
+        f"ALLOW_SETUP = {debug}\n"
+        f"FIREBASE_WEB_API_KEY = {env_vals.get('FIREBASE_WEB_API_KEY', '')!r}\n"
+        f"FIREBASE_PROJECT_ID = {env_vals.get('FIREBASE_PROJECT_ID', 'kroma-26615')!r}\n"
+    )
+    flags_path.write_text(flags_content, encoding="utf-8")
 
+    dist_dir = ROOT_DIR / "dist"
     sep = ";" if sys.platform == "win32" else ":"
+
+    app_name = "Kroma-Debug" if debug else "Kroma"
 
     args = [
         sys.executable,
@@ -34,7 +74,7 @@ def build(onefile: bool = False):
         "--noconfirm",
         "--clean",
         "--name",
-        "Kroma",
+        app_name,
     ]
 
     if sys.platform == "darwin":
@@ -55,6 +95,8 @@ def build(onefile: bool = False):
         "--add-data",
         f"{ROOT_DIR / 'data' / 'extensions' / 'urban_vpn'}{sep}data/extensions/urban_vpn",
         # Hidden imports
+        "--hidden-import",
+        "kroma_build_flags",
         "--hidden-import",
         "sqlite3",
         "--hidden-import",
@@ -103,26 +145,32 @@ def build(onefile: bool = False):
         str(ROOT_DIR / "main_desktop.py"),
     ])
 
-    print("\nRunning PyInstaller...")
-    res = subprocess.run(args, cwd=str(ROOT_DIR))
-    if res.returncode != 0:
-        print(f"\n[ERROR] PyInstaller failed with exit code {res.returncode}")
-        sys.exit(res.returncode)
+    try:
+        print("\nRunning PyInstaller...")
+        res = subprocess.run(args, cwd=str(ROOT_DIR))
+        if res.returncode != 0:
+            print(f"\n[ERROR] PyInstaller failed with exit code {res.returncode}")
+            sys.exit(res.returncode)
+    finally:
+        # Remove temporary build flags so local dev workspace stays clean
+        if flags_path.exists():
+            flags_path.unlink()
 
     # Post-build setup
-    if sys.platform == "darwin" and (dist_dir / "Kroma.app").exists():
-        output_target = dist_dir / "Kroma.app"
-        zip_path = dist_dir / "Kroma-macOS.zip"
-        shutil.make_archive(str(dist_dir / "Kroma-macOS"), "zip", root_dir=str(dist_dir), base_dir="Kroma.app")
+    if sys.platform == "darwin" and (dist_dir / f"{app_name}.app").exists():
+        output_target = dist_dir / f"{app_name}.app"
+        zip_name = f"{app_name}-macOS"
+        zip_path = dist_dir / f"{zip_name}.zip"
+        shutil.make_archive(str(dist_dir / zip_name), "zip", root_dir=str(dist_dir), base_dir=f"{app_name}.app")
         print("\n" + "=" * 60)
-        print("  BUILD COMPLETE (macOS)!")
+        print(f"  BUILD COMPLETE (macOS - {'DEBUG' if debug else 'RELEASE'})!")
         print(f"  * App Bundle:        {output_target}")
         print(f"  * Client Zip File:   {zip_path}")
         print("=" * 60)
         return
 
-    exe_name = "Kroma.exe" if sys.platform == "win32" else "Kroma"
-    output_exe = (dist_dir / exe_name) if onefile else (dist_dir / "Kroma" / exe_name)
+    exe_name = f"{app_name}.exe" if sys.platform == "win32" else app_name
+    output_exe = (dist_dir / exe_name) if onefile else (dist_dir / app_name / exe_name)
     output_folder = output_exe.parent
 
     # Seed data directory alongside the executable so user has ready-to-use profiles & extensions
@@ -131,17 +179,14 @@ def build(onefile: bool = False):
     (target_data_dir / "profiles").mkdir(parents=True, exist_ok=True)
     (target_data_dir / "extensions").mkdir(parents=True, exist_ok=True)
 
-    src_vpn = ROOT_DIR / "data" / "extensions" / "kroma_vpn"
-    dst_vpn = target_data_dir / "extensions" / "kroma_vpn"
-    if src_vpn.exists() and not dst_vpn.exists():
-        shutil.copytree(src_vpn, dst_vpn, dirs_exist_ok=True)
-
-    # Copy .env.example if present as a template for user configuration
-    if (ROOT_DIR / ".env.example").exists():
-        shutil.copy(ROOT_DIR / ".env.example", output_folder / ".env.example")
+    for folder_name in ("kroma_vpn", "urban_vpn"):
+        src_ext = ROOT_DIR / "data" / "extensions" / folder_name
+        dst_ext = target_data_dir / "extensions" / folder_name
+        if src_ext.exists() and not dst_ext.exists():
+            shutil.copytree(src_ext, dst_ext, dirs_exist_ok=True)
 
     print("\n" + "=" * 60)
-    print("  BUILD COMPLETE!")
+    print(f"  BUILD COMPLETE ({'DEBUG' if debug else 'RELEASE'})!")
     print(f"  * Output Executable: {output_exe}")
     print(f"  * Working Data Dir:  {target_data_dir}")
     print("=" * 60)
@@ -150,5 +195,6 @@ def build(onefile: bool = False):
 
 if __name__ == "__main__":
     is_onefile = "--onefile" in sys.argv
-    build(onefile=is_onefile)
+    is_debug = "--debug" in sys.argv
+    build(onefile=is_onefile, debug=is_debug)
 

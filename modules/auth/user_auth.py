@@ -34,6 +34,32 @@ def create_user(username: str, password: str) -> tuple[bool, str]:
     return True, "User created successfully."
 
 
+def upsert_user(username: str, password: str) -> tuple[bool, str]:
+    """Create a user or update password if username already exists locally."""
+    username = username.strip()
+    if not username or len(username) < 3:
+        return False, "Username must be at least 3 characters."
+    if not password or len(password) < 6:
+        return False, "Password must be at least 6 characters."
+
+    pwd_hash = generate_password_hash(password)
+    now = now_iso()
+
+    with db() as conn:
+        existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                (pwd_hash, now, existing["id"]),
+            )
+            return True, "User updated successfully."
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), username, pwd_hash, now, now),
+        )
+    return True, "User created successfully."
+
+
 def authenticate(username: str, password: str) -> tuple[bool, dict | str]:
     """Verify credentials and return user info."""
     username = username.strip()

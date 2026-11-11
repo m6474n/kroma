@@ -65,8 +65,8 @@ def setup():
     from database.db import now_iso
     from modules.auth import user_auth, firebase_auth, firestore
 
-    if not config.ALLOW_SETUP or user_auth.has_users():
-        flash("Account registration is disabled in this release. Please sign in with your licensed credentials.", "info")
+    if not config.ALLOW_SETUP:
+        flash("Account registration is disabled in release mode. Please sign in with your licensed credentials.", "info")
         return redirect(url_for("dashboard.login"))
 
     if request.method == "POST":
@@ -87,6 +87,9 @@ def setup():
         if firebase_auth.is_firebase_configured():
             target_email = email or f"{username}@kroma.app"
             ok_fb, res_fb = firebase_auth.sign_up_with_email_password(target_email, password)
+            if not ok_fb and "already exists" in str(res_fb).lower():
+                ok_fb, res_fb = firebase_auth.sign_in_with_email_password(target_email, password)
+
             if ok_fb and isinstance(res_fb, dict):
                 fb_uid = res_fb.get("localId")
                 fb_token = res_fb.get("idToken")
@@ -112,8 +115,8 @@ def setup():
             if not ok_fs:
                 flash(f"Firestore notice: {msg_fs}", "warning")
 
-        # 3. Create local administrator account in SQLite
-        ok_local, msg_local = user_auth.create_user(username, password)
+        # 3. Create or update local administrator account in SQLite
+        ok_local, msg_local = user_auth.upsert_user(username, password)
         if not ok_local:
             flash(msg_local, "error")
             return render_template("setup.html", username=username, email=email)

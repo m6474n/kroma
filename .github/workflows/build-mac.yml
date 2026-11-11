@@ -1,7 +1,13 @@
 name: Build macOS Application
 
 on:
-  workflow_dispatch: # Allows manual one-click trigger from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Build Debug mode (enables /setup screen)'
+        required: false
+        default: 'false'
+        type: boolean
   push:
     branches: [ main ]
     paths:
@@ -33,14 +39,20 @@ jobs:
           pip install pyinstaller
 
       - name: Build Kroma.app
+        env:
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
-          python build_exe.py
+          if [ "${{ inputs.debug }}" = "true" ]; then
+            python build_exe.py --debug
+          else
+            python build_exe.py
+          fi
 
       - name: Upload macOS App Bundle Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kroma-macOS
-          path: dist/Kroma-macOS.zip
+          name: Kroma-macOS-${{ inputs.debug == 'true' && 'Debug' || 'Release' }}
+          path: dist/*.zip
           retention-days: 30
           if-no-files-found: error
-
