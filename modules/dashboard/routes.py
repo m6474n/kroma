@@ -55,8 +55,25 @@ def _security_guard():
         return None
 
     # All other routes require an authenticated session
-    if not session.get("user"):
+    user_sess = session.get("user")
+    if not user_sess:
+        if request.path.startswith("/api/") and endpoint != "dashboard.api_membership_stream":
+            return jsonify({"error": "Authentication required."}), 401
         return redirect(url_for("dashboard.login"))
+
+    # Real-time membership lock enforcement (skip SSE stream so it emits locked event directly)
+    if endpoint != "dashboard.api_membership_stream":
+        from modules.auth import membership_stream
+        ok_mem, mem_status, live_prof = membership_stream.check_live_status(user_sess.get("id"))
+        if not ok_mem:
+            session.pop("user", None)
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "membership_locked", "status": mem_status}), 401
+            flash(f"Your membership is {mem_status.upper()}. Access has been locked.", "error")
+            return redirect(url_for("dashboard.login"))
+        if isinstance(live_prof, dict):
+            user_sess["subscription"] = live_prof
+            session["user"] = user_sess
 
 
 @bp.route("/setup", methods=["GET", "POST"])
@@ -82,6 +99,8 @@ def setup():
         user_id = str(uuid.uuid4())
         fb_uid = None
         fb_token = None
+        fb_rtoken = None
+        fb_expires = 3600
 
         # 1. Sync with Firebase Authentication if configured
         if firebase_auth.is_firebase_configured():
@@ -93,6 +112,8 @@ def setup():
             if ok_fb and isinstance(res_fb, dict):
                 fb_uid = res_fb.get("localId")
                 fb_token = res_fb.get("idToken")
+                fb_rtoken = res_fb.get("refreshToken")
+                fb_expires = int(res_fb.get("expiresIn") or 3600)
             elif not ok_fb:
                 flash(f"Firebase notice: {res_fb}", "warning")
 
@@ -132,6 +153,15 @@ def setup():
             "email": email or f"{username}@kroma.app",
             "subscription": {"membership_status": "active", "subscription_status": "active", "subscription_tier": "pro"},
         }
+        if fb_uid and fb_token:
+            from modules.auth import membership_stream
+            membership_stream.register_session(
+                fb_uid,
+                id_token=fb_token,
+                refresh_token=fb_rtoken,
+                expires_in=fb_expires,
+                profile=session["user"]["subscription"],
+            )
         if fs_synced:
             flash(f"Account '{username}' created & saved to Firebase Auth + Cloud Firestore!", "success")
         else:
@@ -143,7 +173,7 @@ def setup():
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
-    from modules.auth import user_auth, firebase_auth, firestore
+    from modules.auth import user_auth, firebase_auth, firestore, membership_stream
     if config.ALLOW_SETUP and not user_auth.has_users():
         return redirect(url_for("dashboard.setup"))
 
@@ -161,6 +191,8 @@ def login():
             if ok_fb and isinstance(res_fb, dict):
                 uid = res_fb.get("localId")
                 token = res_fb.get("idToken")
+                rtoken = res_fb.get("refreshToken")
+                exp = int(res_fb.get("expiresIn") or 3600)
 
                 # Verify membership & subscription status in Cloud Firestore
                 ok_prof, prof = firestore.get_user_profile(uid, id_token=token)
@@ -170,12 +202,14 @@ def login():
                         flash(f"Your membership is {mem_status.upper()}. Please contact administrator to renew.", "error")
                         return render_template("login.html", username=username)
 
+                sub_obj = prof if ok_prof and isinstance(prof, dict) else {"membership_status": "active", "subscription_status": "active", "subscription_tier": "pro"}
                 session["user"] = {
                     "id": uid,
                     "username": username,
                     "email": fb_email,
-                    "subscription": prof if ok_prof and isinstance(prof, dict) else {"membership_status": "active", "subscription_status": "active", "subscription_tier": "pro"},
+                    "subscription": sub_obj,
                 }
+                membership_stream.register_session(uid, id_token=token, refresh_token=rtoken, expires_in=exp, profile=sub_obj)
                 flash(f"Signed in as {username} (Membership: Active)", "success")
                 return redirect(url_for("dashboard.index"))
             elif not user_auth.has_users():
@@ -197,9 +231,51 @@ def login():
 
 @bp.post("/logout")
 def logout():
-    session.pop("user", None)
+    from modules.auth import membership_stream
+    user = session.pop("user", None)
+    if isinstance(user, dict) and user.get("id"):
+        membership_stream.unregister_session(user["id"])
     flash("You have been signed out.", "info")
     return redirect(url_for("dashboard.login"))
+
+
+@bp.get("/api/membership/stream")
+def api_membership_stream():
+    """Active SSE stream monitoring live Firestore membership_status for locked-out revocation."""
+    import json
+    import time
+    from flask import Response, stream_with_context
+    from modules.auth import membership_stream
+
+    user = session.get("user")
+    uid = user.get("id") if isinstance(user, dict) else None
+
+    def generate():
+        while True:
+            if not uid:
+                yield f"data: {json.dumps({'locked': True, 'status': 'unauthenticated'})}\n\n"
+                break
+
+            ok_mem, status_str, prof = membership_stream.check_live_status(uid, force=True)
+            tier = prof.get("subscription_tier", "pro") if isinstance(prof, dict) else "pro"
+            payload = {
+                "locked": not ok_mem,
+                "status": status_str,
+                "tier": tier,
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+            if not ok_mem:
+                break
+            time.sleep(5)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @bp.app_context_processor

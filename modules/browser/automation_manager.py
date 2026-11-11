@@ -401,3 +401,14 @@ def stop_automation(auto_id: str) -> tuple[bool, str]:
                 pass
     _set_status(auto_id, "Stopped")
     return True, "Automation stopped."
+
+
+def stop_all_automations():
+    """Stop every active automation immediately (e.g. when membership expires/locks)."""
+    with _lock:
+        active_ids = list(_active_tasks.keys())
+    for auto_id in active_ids:
+        try:
+            stop_automation(auto_id)
+        except Exception:
+            pass

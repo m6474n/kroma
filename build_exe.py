@@ -138,6 +138,8 @@ def build(onefile: bool = False, debug: bool = False):
         "--hidden-import",
         "modules.auth.firestore",
         "--hidden-import",
+        "modules.auth.membership_stream",
+        "--hidden-import",
         "modules.browser.chromium",
         "--hidden-import",
         "modules.browser.playwright_driver",

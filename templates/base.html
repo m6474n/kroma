@@ -24,7 +24,7 @@
   <div style="display: flex; align-items: center; gap: 0.75rem; margin-left: auto;">
     {% set sub = session.user.get('subscription') %}
     {% if sub and (sub.get('membership_status') or sub.get('subscription_status')) %}
-    <span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; background: #dcfce7; color: #15803d; font-weight: 600; text-transform: uppercase; border: 1px solid #bbf7d0;">
+    <span id="membership_badge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; background: #dcfce7; color: #15803d; font-weight: 600; text-transform: uppercase; border: 1px solid #bbf7d0;">
       {{ sub.get('subscription_tier', 'Pro') }} · {{ sub.get('membership_status') or sub.get('subscription_status') }}
     </span>
     {% endif %}
@@ -44,5 +44,29 @@
   {% block content %}{% endblock %}
 </main>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% if session.get('user') and ep not in ('dashboard.login', 'dashboard.setup', 'dashboard.register', 'dashboard.vpn_prep') %}
+<script>
+(function () {
+  if (!window.EventSource) return;
+  const es = new EventSource("{{ url_for('dashboard.api_membership_stream') }}");
+  es.onmessage = function (ev) {
+    try {
+      const data = JSON.parse(ev.data);
+      const badge = document.getElementById("membership_badge");
+      if (badge && data.status) {
+        badge.textContent = (data.tier || "PRO").toUpperCase() + " · " + data.status.toUpperCase();
+      }
+      if (data.locked) {
+        es.close();
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#fff;font-family:sans-serif;text-align:center;padding:24px;"><div><h1 style="font-size:24px;margin-bottom:8px;">Membership ' + (data.status || "LOCKED").toUpperCase() + '</h1><p style="color:#94a3b8;margin-bottom:20px;">Your access has been disabled or expired. Redirecting to login...</p></div></div>';
+        setTimeout(function () {
+          window.location.replace("{{ url_for('dashboard.login') }}");
+        }, 1200);
+      }
+    } catch (e) {}
+  };
+})();
+</script>
+{% endif %}
 </body>
 </html>

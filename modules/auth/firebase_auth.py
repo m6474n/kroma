@@ -7,6 +7,7 @@ from database.db import get_setting, set_setting
 
 SIGN_IN_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={}"
 SIGN_UP_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={}"
+REFRESH_TOKEN_URL = "https://securetoken.googleapis.com/v1/token?key={}"
 
 
 def get_firebase_api_key() -> str:
@@ -91,4 +92,15 @@ def sign_up_with_email_password(email: str, password: str) -> tuple[bool, dict |
         "returnSecureToken": True,
     }
     return _post_identity_api(SIGN_UP_URL, payload)
+
+
+def refresh_id_token(refresh_token: str) -> tuple[bool, dict | str]:
+    """Exchange Firebase refresh token for a fresh ID token."""
+    if not refresh_token:
+        return False, "Missing refresh token."
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+    }
+    return _post_identity_api(REFRESH_TOKEN_URL, payload)
 
