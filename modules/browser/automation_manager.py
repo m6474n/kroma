@@ -198,9 +198,24 @@ def _run_profile_task(
     prof_iters: dict,
     vpn_delay: int = 15,
 ):
-    """Runs a single profile: launches, counts down its independent timer, and closes."""
-    from urllib.parse import quote
-    import config
+    """Runs a single profile using Playwright driver (auto Urban VPN + target URL + countdown)."""
+    from modules.browser import playwright_driver
+
+    profile = prm.get_profile(pid)
+    proxy_cfg = prm.get_profile_proxy(pid)
+
+    def _on_status(st: str):
+        with _lock:
+            if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
+                _live_state[auto_id]["profiles"][pid]["status"] = st
+
+    def _on_timer(rem: int):
+        with _lock:
+            if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
+                _live_state[auto_id]["profiles"][pid]["time_remaining"] = rem
+
+    def _on_log(msg: str, lvl: str = "info"):
+        add_log(auto_id, auto_name, msg, lvl)
 
     iteration = 0
     try:
@@ -208,61 +223,32 @@ def _run_profile_task(
             iteration += 1
             with _lock:
                 if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
-                    _live_state[auto_id]["profiles"][pid]["status"] = "Running"
+                    _live_state[auto_id]["profiles"][pid]["status"] = "Starting"
                     _live_state[auto_id]["profiles"][pid]["time_remaining"] = duration
                     _live_state[auto_id]["profiles"][pid]["current_iteration"] = iteration
 
-            # Determine launch URL: if vpn_delay > 0, open visual gateway countdown first
-            if vpn_delay > 0:
-                prep_url = f"http://{config.HOST}:{config.PORT}/vpn_prep?target={quote(url)}&wait={vpn_delay}"
-                add_log(auto_id, auto_name, f"Launching '{pname}' ({vpn_delay}s Urban VPN window)...", "info")
-                ok, launch_msg = prm.launch(pid, url=prep_url)
-            else:
-                add_log(auto_id, auto_name, f"Launching '{pname}' ({duration}s timer)...", "info")
-                ok, launch_msg = prm.launch(pid, url=url)
+            if not profile:
+                add_log(auto_id, auto_name, f"Profile '{pname}' not found.", "error")
+                break
+
+            ok, run_msg = playwright_driver.run_automated_browser(
+                profile=profile,
+                url=url,
+                duration_seconds=duration,
+                stop_event=stop_event,
+                on_status=_on_status,
+                on_timer=_on_timer,
+                on_log=_on_log,
+                target_country="United Kingdom",
+                proxy_config=proxy_cfg,
+            )
 
             if not ok:
-                add_log(auto_id, auto_name, f"Could not launch '{pname}': {launch_msg}", "error")
-                with _lock:
-                    if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
-                        _live_state[auto_id]["profiles"][pid]["status"] = "Error"
+                add_log(auto_id, auto_name, f"Driver error for '{pname}': {run_msg}", "error")
+                _on_status("Error")
                 time.sleep(2)
                 continue
 
-            # Wait for VPN activation window before countdown starts
-            if vpn_delay > 0:
-                for sec in range(vpn_delay):
-                    if stop_event.is_set():
-                        break
-                    with _lock:
-                        if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
-                            _live_state[auto_id]["profiles"][pid]["status"] = f"VPN Prep ({vpn_delay - sec}s)"
-                    time.sleep(1)
-
-                if stop_event.is_set():
-                    break
-                with _lock:
-                    if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
-                        _live_state[auto_id]["profiles"][pid]["status"] = "Running"
-                add_log(auto_id, auto_name, f"'{pname}' Urban VPN window complete. Running {duration}s on target URL.", "info")
-            else:
-                add_log(auto_id, auto_name, f"'{pname}' is active on target URL.", "info")
-
-            # Countdown individual profile timer
-            start_wait = time.time()
-            while True:
-                elapsed = int(time.time() - start_wait)
-                rem = max(0, duration - elapsed)
-                with _lock:
-                    if auto_id in _live_state and pid in _live_state[auto_id]["profiles"]:
-                        _live_state[auto_id]["profiles"][pid]["time_remaining"] = rem
-
-                if elapsed >= duration or stop_event.is_set():
-                    break
-                time.sleep(1)
-
-            # Close this profile independently when its timer expires
-            prm.close(pid)
             prof_iters[pid] = prof_iters.get(pid, 0) + 1
 
             with _lock:
@@ -275,7 +261,7 @@ def _run_profile_task(
                 conn.execute("UPDATE automations SET profile_iterations=? WHERE id=?",
                              (json.dumps(prof_iters), auto_id))
 
-            add_log(auto_id, auto_name, f"'{pname}' timer expired. Closed cleanly (Iteration {prof_iters[pid]}).", "success")
+            add_log(auto_id, auto_name, f"'{pname}' session complete. Closed cleanly (Iteration {prof_iters[pid]}).", "success")
 
             if stop_event.is_set():
                 break
