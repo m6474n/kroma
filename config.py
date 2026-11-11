@@ -18,6 +18,25 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
+
+def _load_env_file():
+    """Load key=value pairs from .env if present next to app/exe or inside bundle."""
+    for candidate in (BASE_DIR / ".env", BUNDLE_DIR / ".env"):
+        if candidate.exists():
+            try:
+                for line in candidate.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+            except OSError:
+                pass
+            break
+
+
+_load_env_file()
+
 IS_VERCEL = os.environ.get("VERCEL") == "1"
 RELEASE_MODE = os.environ.get("RELEASE_MODE", "1" if IS_FROZEN else "0") == "1"
 ALLOW_SETUP = not RELEASE_MODE and os.environ.get("ALLOW_SETUP", "1") == "1"

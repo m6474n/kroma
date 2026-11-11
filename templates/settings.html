@@ -57,5 +57,36 @@
       <button class="btn primary" style="margin-top: 1.25rem; align-self: flex-start; padding: 0.6rem 1.25rem;">Save Changes</button>
     </form>
   </section>
+
+  <section class="card" style="margin-bottom: 1.5rem;">
+    <h2 style="font-size: 1.15rem; font-weight: 600; margin-top: 0;">Provision Client Account in Firebase &amp; Firestore</h2>
+    <p class="muted" style="font-size: 0.85rem; margin-top: -0.25rem; margin-bottom: 1rem;">Create or sync an email/password account directly into Firebase Authentication and Cloud Firestore (<code>users/{uid}</code>).</p>
+    <form method="post" action="{{ url_for('dashboard.settings_firebase_sync') }}" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+        <div>
+          <label style="font-size: 0.85rem; font-weight: 600;">Client Email
+            <input type="email" name="sync_email" required placeholder="client@example.com">
+          </label>
+        </div>
+        <div>
+          <label style="font-size: 0.85rem; font-weight: 600;">Password (min 6 chars)
+            <input type="password" name="sync_password" required placeholder="••••••••">
+          </label>
+        </div>
+      </div>
+
+      <label style="font-size: 0.85rem; font-weight: 600; margin-top: 0.5rem;">Subscription Tier
+        <select name="sync_tier" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border-radius: 6px; border: 1px solid var(--line);">
+          <option value="pro">Pro (Active)</option>
+          <option value="standard">Standard (Active)</option>
+          <option value="trial">Trial (Active)</option>
+        </select>
+      </label>
+
+      <button class="btn primary" style="margin-top: 1rem; align-self: flex-start; padding: 0.6rem 1.25rem;">Create &amp; Save to Firestore</button>
+    </form>
+  </section>
 </div>
 {% endblock %}

@@ -731,3 +731,52 @@ def settings():
         firebase_web_api_key=firebase_auth.get_firebase_api_key(),
         firebase_project_id=firestore.get_firebase_project_id(),
     )
+
+
+@bp.post("/settings/firebase-sync")
+def settings_firebase_sync():
+    from database.db import now_iso
+    from modules.auth import firebase_auth, firestore
+
+    email = request.form.get("sync_email", "").strip()
+    password = request.form.get("sync_password", "")
+    tier = request.form.get("sync_tier", "pro").strip() or "pro"
+
+    if not email or not password:
+        flash("Email and password are required to create/sync Firebase user.", "error")
+        return redirect(url_for("dashboard.settings"))
+
+    if not firebase_auth.is_firebase_configured():
+        flash("Firebase Web API Key is not configured.", "error")
+        return redirect(url_for("dashboard.settings"))
+
+    ok_fb, res_fb = firebase_auth.sign_up_with_email_password(email, password)
+    if not ok_fb and "already exists" in str(res_fb).lower():
+        ok_fb, res_fb = firebase_auth.sign_in_with_email_password(email, password)
+
+    if not ok_fb or not isinstance(res_fb, dict):
+        flash(f"Firebase Auth failed: {res_fb}", "error")
+        return redirect(url_for("dashboard.settings"))
+
+    uid = res_fb.get("localId")
+    token = res_fb.get("idToken")
+
+    profile_doc = {
+        "uid": uid,
+        "username": email.split("@")[0],
+        "email": email,
+        "subscription_status": "active",
+        "subscription_tier": tier,
+        "subscription_expires_at": "2099-12-31T23:59:59Z",
+        "max_profiles": 100,
+        "role": "client",
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    ok_fs, msg_fs = firestore.save_user_profile(uid, profile_doc, id_token=token)
+    if not ok_fs:
+        flash(f"User created in Firebase Auth (UID: {uid}), but Firestore save failed: {msg_fs}", "warning")
+    else:
+        flash(f"User '{email}' created & saved to Firebase Auth + Cloud Firestore (UID: {uid})!", "success")
+
+    return redirect(url_for("dashboard.settings"))
