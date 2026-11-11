@@ -61,6 +61,17 @@ Double-click `start.bat`:
 - Initializes database schema
 - Starts web dashboard on `http://localhost:5000`
 
+### macOS & Linux (One-Click)
+Run `start.sh` in Terminal:
+```bash
+chmod +x start.sh build.sh
+./start.sh
+```
+- Auto-provisions `.venv`
+- Auto-locates Google Chrome at `/Applications/Google Chrome.app`
+- Auto-detects macOS profiles in `~/Library/Application Support/Google/Chrome`
+- Opens default browser to `http://localhost:5000`
+
 ### Manual Setup
 ```bash
 # 1. Clone repository
@@ -85,22 +96,16 @@ python app.py
 
 Access the dashboard at **[http://localhost:5000](http://localhost:5000)**.
 
-### 📦 Build Windows Standalone Executable (.exe)
-To package Kroma into a portable Windows desktop app that runs without requiring Python on target machines:
+### 📦 Desktop App Packaging (Windows & macOS)
+To package Kroma into a portable desktop executable without requiring Python on target machines:
 
-1. **One-Click Build**:
-   Double-click `build.bat` in the project root.
+- **Windows**: Double-click `build.bat` (outputs `dist\Kroma\Kroma.exe`)
+- **macOS / Linux**: Run `./build.sh` (outputs `dist/Kroma/Kroma`)
+- **Single-File Mode**: `python build_exe.py --onefile`
 
-2. **Command Line**:
-   ```bash
-   python build_exe.py
-   # Or for single-file bundle:
-   python build_exe.py --onefile
-   ```
-
-Output executable is generated at **`dist\Kroma\Kroma.exe`**.
+Output includes:
 - Auto-extracts templates, static assets, and pre-configured auto-VPN extension.
-- Saves SQLite database and browser profiles locally in `dist\Kroma\data\`.
+- Saves SQLite database and browser profiles locally in `dist/Kroma/data/`.
 - Auto-opens default web browser to `http://127.0.0.1:5000` on startup.
 
 ### ☁️ Vercel Deployment

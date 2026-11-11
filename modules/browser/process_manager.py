@@ -90,13 +90,13 @@ def is_running(profile_dir, profile_directory_name: str | None = None, rmap: dic
         _tracked_hwnds[key] = alive_hwnds
         if alive_hwnds:
             return True
-
-    if profile_directory_name:
-        # If tracked window is closed, system Chrome profile window is closed
-        return False
+        if profile_directory_name:
+            return False
 
     rmap = rmap if rmap is not None else running_map()
     ndir = norm(profile_dir)
+    if profile_directory_name:
+        return (ndir, profile_directory_name) in rmap
     return (ndir, None) in rmap
 
 
@@ -172,9 +172,17 @@ def close(profile_dir, profile_directory_name: str | None = None, timeout: float
             time.sleep(0.5)
 
     # If this is a system Chrome profile (profile_directory_name is set),
-    # closing its window via WM_CLOSE is sufficient. NEVER force-kill the shared chrome.exe
-    # because that would close personal Chrome and other profiles!
+    # closing its window via WM_CLOSE (Win) or AppleScript (macOS) is sufficient.
+    # NEVER force-kill the shared Chrome process because that would close personal Chrome!
     if profile_directory_name is not None:
+        if sys.platform == "darwin":
+            try:
+                subprocess.run(
+                    ["osascript", "-e", 'tell application "Google Chrome" to close active window'],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2
+                )
+            except Exception:
+                pass
         return True
 
     # 2. For dedicated isolated ProfileHub profiles, manage their dedicated process:

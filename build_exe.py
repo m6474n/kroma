@@ -25,7 +25,7 @@ def build(onefile: bool = False):
     dist_dir = ROOT_DIR / "dist"
     build_dir = ROOT_DIR / "build"
 
-    sep = ";"  # Windows PyInstaller path separator
+    sep = ";" if sys.platform == "win32" else ":"
 
     args = [
         sys.executable,
@@ -89,7 +89,8 @@ def build(onefile: bool = False):
         sys.exit(res.returncode)
 
     # Post-build setup
-    output_exe = (dist_dir / "Kroma.exe") if onefile else (dist_dir / "Kroma" / "Kroma.exe")
+    exe_name = "Kroma.exe" if sys.platform == "win32" else "Kroma"
+    output_exe = (dist_dir / exe_name) if onefile else (dist_dir / "Kroma" / exe_name)
     output_folder = output_exe.parent
 
     # Seed data directory alongside the executable so user has ready-to-use profiles & extensions

@@ -7,6 +7,7 @@ from database.db import get_setting
 
 
 def _candidates():
+    import sys
     pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
     pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
     local = os.environ.get("LOCALAPPDATA", "")
@@ -15,8 +16,12 @@ def _candidates():
         for rel in rels:
             if base:
                 yield os.path.join(base, rel)
+    # macOS paths
     yield "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     yield "/Applications/Chromium.app/Contents/MacOS/Chromium"
+    yield os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+    yield "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+    # Linux & PATH
     for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"):
         found = shutil.which(name)
         if found:
@@ -38,9 +43,18 @@ def login_url(email: str) -> str:
 
 
 def default_chrome_user_data_dir() -> str | None:
-    local = os.environ.get("LOCALAPPDATA", "")
-    p = os.path.join(local, "Google", "Chrome", "User Data")
-    return p if os.path.exists(p) else None
+    import sys
+    if sys.platform == "darwin":
+        mac_path = os.path.expanduser("~/Library/Application Support/Google/Chrome")
+        return mac_path if os.path.exists(mac_path) else None
+    elif sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA", "")
+        p = os.path.join(local, "Google", "Chrome", "User Data")
+        return p if os.path.exists(p) else None
+    else:
+        # Linux
+        linux_path = os.path.expanduser("~/.config/google-chrome")
+        return linux_path if os.path.exists(linux_path) else None
 
 
 def list_system_chrome_profiles() -> list[dict]:
