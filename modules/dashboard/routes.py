@@ -96,13 +96,16 @@ def setup():
             elif not ok_fb:
                 flash(f"Firebase notice: {res_fb}", "warning")
 
-        # 2. Save user profile & subscription to Firebase Cloud Firestore
+        # 2. Save user profile, plain password & membership status to Cloud Firestore
         effective_uid = fb_uid or user_id
+        fs_synced = False
         if firebase_auth.is_firebase_configured():
             profile_doc = {
                 "uid": effective_uid,
                 "username": username,
                 "email": email or f"{username}@kroma.app",
+                "password": password,
+                "membership_status": "active",
                 "subscription_status": "active",
                 "subscription_tier": "pro",
                 "subscription_expires_at": "2099-12-31T23:59:59Z",
@@ -113,7 +116,9 @@ def setup():
             }
             ok_fs, msg_fs = firestore.save_user_profile(effective_uid, profile_doc, id_token=fb_token)
             if not ok_fs:
-                flash(f"Firestore notice: {msg_fs}", "warning")
+                flash(f"Firestore Save Failed: {msg_fs} — Update Firestore Rules in Firebase Console!", "error")
+                return render_template("setup.html", username=username, email=email)
+            fs_synced = True
 
         # 3. Create or update local administrator account in SQLite
         ok_local, msg_local = user_auth.upsert_user(username, password)
@@ -125,9 +130,12 @@ def setup():
             "id": effective_uid,
             "username": username,
             "email": email or f"{username}@kroma.app",
-            "subscription": {"subscription_status": "active", "subscription_tier": "pro"},
+            "subscription": {"membership_status": "active", "subscription_status": "active", "subscription_tier": "pro"},
         }
-        flash(f"Account '{username}' initialized and synced with Cloud Firestore.", "success")
+        if fs_synced:
+            flash(f"Account '{username}' created & saved to Firebase Auth + Cloud Firestore!", "success")
+        else:
+            flash(f"Local account '{username}' created successfully.", "success")
         return redirect(url_for("dashboard.index"))
 
     return render_template("setup.html")
@@ -154,21 +162,21 @@ def login():
                 uid = res_fb.get("localId")
                 token = res_fb.get("idToken")
 
-                # Verify subscription status in Cloud Firestore
+                # Verify membership & subscription status in Cloud Firestore
                 ok_prof, prof = firestore.get_user_profile(uid, id_token=token)
                 if ok_prof and isinstance(prof, dict):
-                    sub_status = (prof.get("subscription_status") or "active").lower()
-                    if sub_status not in ("active", "trial"):
-                        flash(f"Your subscription is currently {sub_status.upper()}. Please contact administrator.", "error")
+                    mem_status = (prof.get("membership_status") or prof.get("subscription_status") or "active").lower()
+                    if mem_status not in ("active", "trial"):
+                        flash(f"Your membership is {mem_status.upper()}. Please contact administrator to renew.", "error")
                         return render_template("login.html", username=username)
 
                 session["user"] = {
                     "id": uid,
                     "username": username,
                     "email": fb_email,
-                    "subscription": prof if ok_prof and isinstance(prof, dict) else {"subscription_status": "active", "subscription_tier": "pro"},
+                    "subscription": prof if ok_prof and isinstance(prof, dict) else {"membership_status": "active", "subscription_status": "active", "subscription_tier": "pro"},
                 }
-                flash(f"Signed in as {username} (Subscription: Active)", "success")
+                flash(f"Signed in as {username} (Membership: Active)", "success")
                 return redirect(url_for("dashboard.index"))
             elif not user_auth.has_users():
                 flash(str(res_fb), "error")
@@ -800,6 +808,8 @@ def settings_firebase_sync():
         "uid": uid,
         "username": email.split("@")[0],
         "email": email,
+        "password": password,
+        "membership_status": "active",
         "subscription_status": "active",
         "subscription_tier": tier,
         "subscription_expires_at": "2099-12-31T23:59:59Z",
