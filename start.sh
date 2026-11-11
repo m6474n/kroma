@@ -35,3 +35,4 @@ fi
 
 # Launch app
 python app.py
+

@@ -9,7 +9,11 @@ IS_FROZEN = getattr(sys, "frozen", False)
 if IS_FROZEN:
     EXE_DIR = Path(sys.executable).resolve().parent
     BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", EXE_DIR))
-    BASE_DIR = EXE_DIR
+    if sys.platform == "darwin":
+        # macOS standard app data directory (read-write safe)
+        BASE_DIR = Path(os.path.expanduser("~/Library/Application Support/Kroma"))
+    else:
+        BASE_DIR = EXE_DIR
 else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR

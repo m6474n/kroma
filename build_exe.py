@@ -35,7 +35,16 @@ def build(onefile: bool = False):
         "--clean",
         "--name",
         "Kroma",
-        "--onefile" if onefile else "--onedir",
+    ]
+
+    if sys.platform == "darwin":
+        args.append("--windowed")
+    elif onefile:
+        args.append("--onefile")
+    else:
+        args.append("--onedir")
+
+    args.extend([
         # Resource bundles
         "--add-data",
         f"{ROOT_DIR / 'templates'}{sep}templates",
@@ -80,7 +89,7 @@ def build(onefile: bool = False):
         "app",
         # Main entry script
         str(ROOT_DIR / "main_desktop.py"),
-    ]
+    ])
 
     print("\nRunning PyInstaller...")
     res = subprocess.run(args, cwd=str(ROOT_DIR))
@@ -89,6 +98,17 @@ def build(onefile: bool = False):
         sys.exit(res.returncode)
 
     # Post-build setup
+    if sys.platform == "darwin" and (dist_dir / "Kroma.app").exists():
+        output_target = dist_dir / "Kroma.app"
+        zip_path = dist_dir / "Kroma-macOS.zip"
+        shutil.make_archive(str(dist_dir / "Kroma-macOS"), "zip", root_dir=str(dist_dir), base_dir="Kroma.app")
+        print("\n" + "=" * 60)
+        print("  BUILD COMPLETE (macOS)!")
+        print(f"  * App Bundle:        {output_target}")
+        print(f"  * Client Zip File:   {zip_path}")
+        print("=" * 60)
+        return
+
     exe_name = "Kroma.exe" if sys.platform == "win32" else "Kroma"
     output_exe = (dist_dir / exe_name) if onefile else (dist_dir / "Kroma" / exe_name)
     output_folder = output_exe.parent
