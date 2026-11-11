@@ -88,5 +88,20 @@
       <button class="btn primary" style="margin-top: 1rem; align-self: flex-start; padding: 0.6rem 1.25rem;">Create &amp; Save to Firestore</button>
     </form>
   </section>
+
+  <section class="card" style="margin-bottom: 1.5rem;">
+    <h2 style="font-size: 1.15rem; font-weight: 600; margin-top: 0;">Google OAuth Client Secret</h2>
+    <p class="muted" style="font-size: 0.85rem; margin-top: -0.25rem; margin-bottom: 0.75rem;">
+      Status: {% if client_secret_exists %}<b style="color: #15803d;">Found</b>{% else %}<b style="color: #b91c1c;">Missing</b>{% endif %}
+      at <code>{{ client_secret_path }}</code>
+    </p>
+    <form method="post" action="{{ url_for('dashboard.settings_client_secret') }}" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label style="font-size: 0.85rem; font-weight: 600;">Paste <code>client_secret.json</code> contents
+        <textarea name="client_secret_json" rows="4" placeholder='{"installed":{"client_id":"...","client_secret":"..."}}' style="width: 100%; font-family: monospace; font-size: 0.8rem; margin-top: 0.25rem;"></textarea>
+      </label>
+      <button class="btn primary" style="margin-top: 0.75rem; align-self: flex-start; padding: 0.6rem 1.25rem;">Save OAuth Client JSON</button>
+    </form>
+  </section>
 </div>
 {% endblock %}

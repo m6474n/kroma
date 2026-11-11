@@ -94,6 +94,13 @@ def build(onefile: bool = False, debug: bool = False):
         f"{ROOT_DIR / 'data' / 'extensions' / 'kroma_vpn'}{sep}data/extensions/kroma_vpn",
         "--add-data",
         f"{ROOT_DIR / 'data' / 'extensions' / 'urban_vpn'}{sep}data/extensions/urban_vpn",
+    ])
+
+    client_secret_src = ROOT_DIR / "data" / "client_secret.json"
+    if client_secret_src.exists():
+        args.extend(["--add-data", f"{client_secret_src}{sep}data"])
+
+    args.extend([
         # Hidden imports
         "--hidden-import",
         "kroma_build_flags",
@@ -184,6 +191,9 @@ def build(onefile: bool = False, debug: bool = False):
         dst_ext = target_data_dir / "extensions" / folder_name
         if src_ext.exists() and not dst_ext.exists():
             shutil.copytree(src_ext, dst_ext, dirs_exist_ok=True)
+
+    if client_secret_src.exists():
+        shutil.copy2(client_secret_src, target_data_dir / "client_secret.json")
 
     print("\n" + "=" * 60)
     print(f"  BUILD COMPLETE ({'DEBUG' if debug else 'RELEASE'})!")

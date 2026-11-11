@@ -68,7 +68,12 @@ URBAN_VPN_DIR = EXTENSIONS_DIR / "urban_vpn"
 KROMA_VPN_DIR = EXTENSIONS_DIR / "kroma_vpn"
 BROWSEC_VPN_DIR = EXTENSIONS_DIR / "browsec_vpn"
 TOUCH_VPN_DIR = EXTENSIONS_DIR / "touch_vpn"
-CLIENT_SECRET_PATH = Path(os.environ.get("GOOGLE_CLIENT_SECRET", DATA_DIR / "client_secret.json"))
+_cs_env = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+if _cs_env:
+    _cs_path = Path(_cs_env)
+    CLIENT_SECRET_PATH = _cs_path if _cs_path.is_absolute() else (BASE_DIR / _cs_path)
+else:
+    CLIENT_SECRET_PATH = DATA_DIR / "client_secret.json"
 FERNET_KEY_PATH = DATA_DIR / "secret.key"
 FLASK_SECRET_PATH = DATA_DIR / "flask_secret"
 
@@ -107,5 +112,14 @@ def ensure_dirs():
     if bundled_urban.resolve() != URBAN_VPN_DIR.resolve() and bundled_urban.exists() and not (URBAN_VPN_DIR / "manifest.json").exists():
         try:
             shutil.copytree(bundled_urban, URBAN_VPN_DIR, dirs_exist_ok=True)
+        except Exception:
+            pass
+
+    # Seed client_secret.json if bundled in executable
+    bundled_cs = BUNDLE_DIR / "data" / "client_secret.json"
+    if bundled_cs.exists() and bundled_cs.resolve() != CLIENT_SECRET_PATH.resolve() and not CLIENT_SECRET_PATH.exists():
+        try:
+            CLIENT_SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bundled_cs, CLIENT_SECRET_PATH)
         except Exception:
             pass

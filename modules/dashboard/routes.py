@@ -733,7 +733,29 @@ def settings():
         effective_dir=str(prm.profiles_root()),
         firebase_web_api_key=firebase_auth.get_firebase_api_key(),
         firebase_project_id=firestore.get_firebase_project_id(),
+        client_secret_exists=CLIENT_SECRET_PATH.exists(),
+        client_secret_path=str(CLIENT_SECRET_PATH),
     )
+
+
+@bp.post("/settings/client-secret")
+def settings_client_secret():
+    import json
+    raw = request.form.get("client_secret_json", "").strip()
+    if not raw:
+        flash("Please paste valid Google OAuth client_secret JSON.", "error")
+        return redirect(url_for("dashboard.settings"))
+    try:
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict) or not any(k in parsed for k in ("installed", "web")):
+            flash("Invalid Google OAuth JSON: missing 'installed' or 'web' key.", "error")
+            return redirect(url_for("dashboard.settings"))
+        CLIENT_SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CLIENT_SECRET_PATH.write_text(json.dumps(parsed, indent=2), encoding="utf-8")
+        flash(f"Saved client_secret.json to {CLIENT_SECRET_PATH}", "success")
+    except Exception as exc:
+        flash(f"Invalid JSON: {exc}", "error")
+    return redirect(url_for("dashboard.settings"))
 
 
 @bp.post("/settings/firebase-sync")
