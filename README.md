@@ -85,6 +85,24 @@ python app.py
 
 Access the dashboard at **[http://localhost:5000](http://localhost:5000)**.
 
+### 📦 Build Windows Standalone Executable (.exe)
+To package Kroma into a portable Windows desktop app that runs without requiring Python on target machines:
+
+1. **One-Click Build**:
+   Double-click `build.bat` in the project root.
+
+2. **Command Line**:
+   ```bash
+   python build_exe.py
+   # Or for single-file bundle:
+   python build_exe.py --onefile
+   ```
+
+Output executable is generated at **`dist\Kroma\Kroma.exe`**.
+- Auto-extracts templates, static assets, and pre-configured auto-VPN extension.
+- Saves SQLite database and browser profiles locally in `dist\Kroma\data\`.
+- Auto-opens default web browser to `http://127.0.0.1:5000` on startup.
+
 ### ☁️ Vercel Deployment
 Kroma is pre-configured for Vercel serverless deployment via [`vercel.json`](vercel.json) and [`api/index.py`](api/index.py).
 

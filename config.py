@@ -1,9 +1,19 @@
 """Central configuration for Kroma."""
 import os
+import shutil
+import sys
 import tempfile
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+IS_FROZEN = getattr(sys, "frozen", False)
+if IS_FROZEN:
+    EXE_DIR = Path(sys.executable).resolve().parent
+    BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", EXE_DIR))
+    BASE_DIR = EXE_DIR
+else:
+    BASE_DIR = Path(__file__).resolve().parent
+    BUNDLE_DIR = BASE_DIR
+
 IS_VERCEL = os.environ.get("VERCEL") == "1"
 _default_data = Path(tempfile.gettempdir()) / "kroma_data" if IS_VERCEL else BASE_DIR / "data"
 DATA_DIR = Path(os.environ.get("KROMA_DATA", os.environ.get("PROFILEHUB_DATA", _default_data)))
@@ -37,3 +47,12 @@ def ensure_dirs():
     DEFAULT_PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     EXTENSIONS_DIR.mkdir(parents=True, exist_ok=True)
     URBAN_VPN_DIR.mkdir(parents=True, exist_ok=True)
+    KROMA_VPN_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Seed bundled extension files into writable DATA_DIR if missing
+    bundled_vpn = BUNDLE_DIR / "data" / "extensions" / "kroma_vpn"
+    if bundled_vpn.resolve() != KROMA_VPN_DIR.resolve() and bundled_vpn.exists() and not (KROMA_VPN_DIR / "manifest.json").exists():
+        try:
+            shutil.copytree(bundled_vpn, KROMA_VPN_DIR, dirs_exist_ok=True)
+        except Exception:
+            pass

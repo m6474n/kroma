@@ -12,7 +12,9 @@ def create_app() -> Flask:
     config.ensure_dirs()
     init_db()
 
-    app = Flask(__name__)
+    template_dir = str(config.BUNDLE_DIR / "templates")
+    static_dir = str(config.BUNDLE_DIR / "static")
+    app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     secret_key = os.environ.get("SECRET_KEY")
     if not secret_key:
         if not config.FLASK_SECRET_PATH.exists():
