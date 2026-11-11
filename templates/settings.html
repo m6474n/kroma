@@ -21,6 +21,19 @@
 
       <hr style="border: 0; border-top: 1px solid var(--line); margin: 1.25rem 0;">
 
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-top: 0;">Firebase &amp; Cloud Firestore Sync</h2>
+      <p class="muted" style="font-size: 0.85rem; margin-top: -0.5rem; margin-bottom: 1rem;">Used for remote license management, user profiles, and subscription control.</p>
+
+      <label style="font-size: 0.85rem; font-weight: 600;">Firebase Web API Key
+        <input type="text" name="firebase_web_api_key" value="{{ firebase_web_api_key }}" placeholder="AIzaSy...">
+      </label>
+
+      <label style="font-size: 0.85rem; font-weight: 600; margin-top: 0.5rem;">Firebase Project ID
+        <input type="text" name="firebase_project_id" value="{{ firebase_project_id }}" placeholder="profile-hub-513404">
+      </label>
+
+      <hr style="border: 0; border-top: 1px solid var(--line); margin: 1.25rem 0;">
+
       <h2 style="font-size: 1.15rem; font-weight: 600; margin-top: 0;">Security &amp; Password</h2>
       <p class="muted" style="font-size: 0.85rem; margin-top: -0.5rem; margin-bottom: 1rem;">Logged in as: <b>{{ session.user.get('username') }}</b></p>
 

@@ -20,6 +20,11 @@
   </nav>
   {% if session.get('user') %}
   <div style="display: flex; align-items: center; gap: 0.75rem; margin-left: auto;">
+    {% if session.user.get('subscription') and session.user.subscription.get('subscription_status') %}
+    <span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; background: #dcfce7; color: #15803d; font-weight: 600; text-transform: uppercase; border: 1px solid #bbf7d0;">
+      {{ session.user.subscription.get('subscription_tier', 'Pro') }} · {{ session.user.subscription.get('subscription_status') }}
+    </span>
+    {% endif %}
     <span style="font-size: 0.8rem; color: #64748b; font-weight: 500;">👤 {{ session.user.get('username') or session.user.get('email', '') }}</span>
     <form method="post" action="{{ url_for('dashboard.logout') }}" style="display: inline; margin: 0;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

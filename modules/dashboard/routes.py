@@ -40,7 +40,12 @@ def _security_guard():
 
     # First-time initial setup
     if not user_auth.has_users():
-        if endpoint != "dashboard.setup":
+        if not config.ALLOW_SETUP:
+            # Release build: setup disabled, force login
+            if endpoint not in ("dashboard.login", "dashboard.vpn_prep"):
+                return redirect(url_for("dashboard.login"))
+            return None
+        elif endpoint != "dashboard.setup":
             return redirect(url_for("dashboard.setup"))
         return None
 
@@ -55,39 +60,79 @@ def _security_guard():
 
 @bp.route("/setup", methods=["GET", "POST"])
 def setup():
-    from modules.auth import user_auth
-    if user_auth.has_users():
+    import uuid
+    from database.db import now_iso
+    from modules.auth import user_auth, firebase_auth, firestore
+
+    if not config.ALLOW_SETUP or user_auth.has_users():
+        flash("Account registration is disabled in this release. Please sign in with your licensed credentials.", "info")
         return redirect(url_for("dashboard.login"))
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm_password", "")
 
         if password != confirm:
             flash("Passwords do not match.", "error")
-            return render_template("setup.html", username=username)
+            return render_template("setup.html", username=username, email=email)
 
-        ok, msg = user_auth.create_user(username, password)
-        if not ok:
-            flash(msg, "error")
-            return render_template("setup.html", username=username)
+        user_id = str(uuid.uuid4())
+        fb_uid = None
+        fb_token = None
 
-        # Authenticate immediately
-        ok_auth, user = user_auth.authenticate(username, password)
-        if ok_auth:
-            session["user"] = user
-            flash(f"Administrator account '{username}' created successfully.", "success")
-            return redirect(url_for("dashboard.index"))
-        return redirect(url_for("dashboard.login"))
+        # 1. Sync with Firebase Authentication if configured
+        if firebase_auth.is_firebase_configured():
+            target_email = email or f"{username}@kroma.app"
+            ok_fb, res_fb = firebase_auth.sign_up_with_email_password(target_email, password)
+            if ok_fb and isinstance(res_fb, dict):
+                fb_uid = res_fb.get("localId")
+                fb_token = res_fb.get("idToken")
+            elif not ok_fb:
+                flash(f"Firebase notice: {res_fb}", "warning")
+
+        # 2. Save user profile & subscription to Firebase Cloud Firestore
+        effective_uid = fb_uid or user_id
+        if firebase_auth.is_firebase_configured():
+            profile_doc = {
+                "uid": effective_uid,
+                "username": username,
+                "email": email or f"{username}@kroma.app",
+                "subscription_status": "active",
+                "subscription_tier": "pro",
+                "subscription_expires_at": "2099-12-31T23:59:59Z",
+                "max_profiles": 100,
+                "role": "admin",
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+            }
+            ok_fs, msg_fs = firestore.save_user_profile(effective_uid, profile_doc, id_token=fb_token)
+            if not ok_fs:
+                flash(f"Firestore notice: {msg_fs}", "warning")
+
+        # 3. Create local administrator account in SQLite
+        ok_local, msg_local = user_auth.create_user(username, password)
+        if not ok_local:
+            flash(msg_local, "error")
+            return render_template("setup.html", username=username, email=email)
+
+        session["user"] = {
+            "id": effective_uid,
+            "username": username,
+            "email": email or f"{username}@kroma.app",
+            "subscription": {"subscription_status": "active", "subscription_tier": "pro"},
+        }
+        flash(f"Account '{username}' initialized and synced with Cloud Firestore.", "success")
+        return redirect(url_for("dashboard.index"))
 
     return render_template("setup.html")
 
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
-    from modules.auth import user_auth
-    if not user_auth.has_users():
+    from modules.auth import user_auth, firebase_auth, firestore
+    if config.ALLOW_SETUP and not user_auth.has_users():
         return redirect(url_for("dashboard.setup"))
 
     if session.get("user"):
@@ -96,6 +141,36 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+
+        # A. Authenticate via Firebase Authentication first if configured
+        if firebase_auth.is_firebase_configured():
+            fb_email = username if "@" in username else f"{username}@kroma.app"
+            ok_fb, res_fb = firebase_auth.sign_in_with_email_password(fb_email, password)
+            if ok_fb and isinstance(res_fb, dict):
+                uid = res_fb.get("localId")
+                token = res_fb.get("idToken")
+
+                # Verify subscription status in Cloud Firestore
+                ok_prof, prof = firestore.get_user_profile(uid, id_token=token)
+                if ok_prof and isinstance(prof, dict):
+                    sub_status = (prof.get("subscription_status") or "active").lower()
+                    if sub_status not in ("active", "trial"):
+                        flash(f"Your subscription is currently {sub_status.upper()}. Please contact administrator.", "error")
+                        return render_template("login.html", username=username)
+
+                session["user"] = {
+                    "id": uid,
+                    "username": username,
+                    "email": fb_email,
+                    "subscription": prof if ok_prof and isinstance(prof, dict) else {"subscription_status": "active", "subscription_tier": "pro"},
+                }
+                flash(f"Signed in as {username} (Subscription: Active)", "success")
+                return redirect(url_for("dashboard.index"))
+            elif not user_auth.has_users():
+                flash(str(res_fb), "error")
+                return render_template("login.html", username=username)
+
+        # B. Fallback to local database credentials
         ok, res = user_auth.authenticate(username, password)
         if ok:
             session["user"] = res
@@ -611,10 +686,18 @@ def automation_delete(auto_id):
 # -------------------------------------------------------------- settings
 @bp.route("/settings", methods=["GET", "POST"])
 def settings():
-    from modules.auth import user_auth
+    from modules.auth import user_auth, firebase_auth, firestore
     if request.method == "POST":
         set_setting("chrome_path", request.form.get("chrome_path", "").strip())
         set_setting("profiles_dir", request.form.get("profiles_dir", "").strip())
+
+        fb_key = request.form.get("firebase_web_api_key")
+        if fb_key is not None:
+            firebase_auth.set_firebase_api_key(fb_key.strip())
+
+        fb_proj = request.form.get("firebase_project_id")
+        if fb_proj is not None:
+            firestore.set_firebase_project_id(fb_proj.strip())
 
         # Password update
         new_pwd = request.form.get("new_password", "")
@@ -644,4 +727,6 @@ def settings():
         detected=chromium.find_chrome(),
         profiles_dir=get_setting("profiles_dir", ""),
         effective_dir=str(prm.profiles_root()),
+        firebase_web_api_key=firebase_auth.get_firebase_api_key(),
+        firebase_project_id=firestore.get_firebase_project_id(),
     )

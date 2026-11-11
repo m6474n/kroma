@@ -16,6 +16,12 @@
     </div>
 
     <div style="margin-bottom: 1.25rem;">
+      <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">Email (Firebase Sync & Subscription)</label>
+      <input type="email" name="email" value="{{ email or '' }}" placeholder="client@example.com" class="input" style="width: 100%; box-sizing: border-box; padding: 0.6rem 0.75rem;">
+      <small class="muted" style="font-size: 0.75rem; display: block; margin-top: 3px;">Used to sync user profile and subscription in Cloud Firestore.</small>
+    </div>
+
+    <div style="margin-bottom: 1.25rem;">
       <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">Password</label>
       <input type="password" name="password" required class="input" placeholder="At least 6 characters" style="width: 100%; box-sizing: border-box; padding: 0.6rem 0.75rem;">
     </div>

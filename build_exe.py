@@ -78,6 +78,8 @@ def build(onefile: bool = False):
         "--hidden-import",
         "modules.auth.firebase_auth",
         "--hidden-import",
+        "modules.auth.firestore",
+        "--hidden-import",
         "modules.browser.chromium",
         "--hidden-import",
         "modules.browser.profile_manager",
