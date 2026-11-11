@@ -10,7 +10,7 @@
 <header class="topbar">
   <a class="brand" href="{{ url_for('dashboard.index') }}">Kroma</a>
   {% set ep = request.endpoint or '' %}
-  {% if ep not in ('dashboard.login', 'dashboard.register') %}
+  {% if ep not in ('dashboard.login', 'dashboard.setup', 'dashboard.register') %}
   <nav>
     <a class="{{ 'on' if ep == 'dashboard.index' }}" href="{{ url_for('dashboard.index') }}">Dashboard</a>
     <a class="{{ 'on' if ep == 'dashboard.accounts' }}" href="{{ url_for('dashboard.accounts') }}">Google Accounts</a>
@@ -20,7 +20,7 @@
   </nav>
   {% if session.get('user') %}
   <div style="display: flex; align-items: center; gap: 0.75rem; margin-left: auto;">
-    <span style="font-size: 0.8rem; color: #64748b; font-weight: 500;">👤 {{ session.user.get('email', '') }}</span>
+    <span style="font-size: 0.8rem; color: #64748b; font-weight: 500;">👤 {{ session.user.get('username') or session.user.get('email', '') }}</span>
     <form method="post" action="{{ url_for('dashboard.logout') }}" style="display: inline; margin: 0;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn sm" style="padding: 2px 8px; font-size: 0.75rem;">Logout</button>

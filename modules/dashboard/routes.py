@@ -22,7 +22,7 @@ def csrf_token() -> str:
 
 
 @bp.before_app_request
-def _csrf_protect():
+def _security_guard():
     # 1. CSRF Protection for POST requests
     if request.method == "POST":
         sent = request.form.get("csrf_token") or request.headers.get("X-CSRFToken") or ""
@@ -30,82 +30,82 @@ def _csrf_protect():
         if not sent or not expected or not secrets.compare_digest(sent, expected):
             abort(400, "Invalid or missing CSRF token. Reload the page and try again.")
 
-    # 2. Firebase Authentication Guard
-    from modules.auth import firebase_auth
-    if firebase_auth.is_firebase_configured():
-        endpoint = request.endpoint or ""
-        allowed = (
-            "dashboard.login",
-            "dashboard.register",
-            "dashboard.logout",
-            "dashboard.settings",
-            "static",
-        )
-        if endpoint not in allowed and not session.get("user"):
-            return redirect(url_for("dashboard.login"))
+    # 2. Strict Authentication Guard (prevents unauthorized access to all routes)
+    from modules.auth import user_auth
+    endpoint = request.endpoint or ""
+
+    # Allow static assets unconditionally
+    if endpoint == "static":
+        return None
+
+    # First-time initial setup
+    if not user_auth.has_users():
+        if endpoint != "dashboard.setup":
+            return redirect(url_for("dashboard.setup"))
+        return None
+
+    # Login and setup routing
+    if endpoint in ("dashboard.login", "dashboard.setup"):
+        return None
+
+    # All other routes require an authenticated session
+    if not session.get("user"):
+        return redirect(url_for("dashboard.login"))
+
+
+@bp.route("/setup", methods=["GET", "POST"])
+def setup():
+    from modules.auth import user_auth
+    if user_auth.has_users():
+        return redirect(url_for("dashboard.login"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        if password != confirm:
+            flash("Passwords do not match.", "error")
+            return render_template("setup.html", username=username)
+
+        ok, msg = user_auth.create_user(username, password)
+        if not ok:
+            flash(msg, "error")
+            return render_template("setup.html", username=username)
+
+        # Authenticate immediately
+        ok_auth, user = user_auth.authenticate(username, password)
+        if ok_auth:
+            session["user"] = user
+            flash(f"Administrator account '{username}' created successfully.", "success")
+            return redirect(url_for("dashboard.index"))
+        return redirect(url_for("dashboard.login"))
+
+    return render_template("setup.html")
 
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
-    from modules.auth import firebase_auth
+    from modules.auth import user_auth
+    if not user_auth.has_users():
+        return redirect(url_for("dashboard.setup"))
+
     if session.get("user"):
         return redirect(url_for("dashboard.index"))
 
-    is_configured = firebase_auth.is_firebase_configured()
     if request.method == "POST":
-        if not is_configured:
-            flash("Firebase Web API Key is not configured. Please set it in Settings first.", "error")
-            return redirect(url_for("dashboard.login"))
-        email = request.form.get("email", "").strip()
+        username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        ok, res = firebase_auth.sign_in_with_email_password(email, password)
+        ok, res = user_auth.authenticate(username, password)
         if ok:
-            session["user"] = {
-                "email": res.get("email", email),
-                "localId": res.get("localId", ""),
-                "idToken": res.get("idToken", ""),
-            }
-            flash(f"Welcome back, {email}!", "success")
+            session["user"] = res
+            flash(f"Welcome back, {res['username']}!", "success")
             return redirect(url_for("dashboard.index"))
         else:
             flash(str(res), "error")
-            return render_template("login.html", is_configured=is_configured, email=email)
+            return render_template("login.html", username=username)
 
-    return render_template("login.html", is_configured=is_configured)
-
-
-@bp.route("/register", methods=["GET", "POST"])
-def register():
-    from modules.auth import firebase_auth
-    if session.get("user"):
-        return redirect(url_for("dashboard.index"))
-
-    is_configured = firebase_auth.is_firebase_configured()
-    if request.method == "POST":
-        if not is_configured:
-            flash("Firebase Web API Key is not configured. Please set it in Settings first.", "error")
-            return redirect(url_for("dashboard.register"))
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        confirm = request.form.get("confirm_password", "")
-        if password != confirm:
-            flash("Passwords do not match.", "error")
-            return render_template("register.html", is_configured=is_configured, email=email)
-
-        ok, res = firebase_auth.sign_up_with_email_password(email, password)
-        if ok:
-            session["user"] = {
-                "email": res.get("email", email),
-                "localId": res.get("localId", ""),
-                "idToken": res.get("idToken", ""),
-            }
-            flash(f"Account created successfully. Welcome, {email}!", "success")
-            return redirect(url_for("dashboard.index"))
-        else:
-            flash(str(res), "error")
-            return render_template("register.html", is_configured=is_configured, email=email)
-
-    return render_template("register.html", is_configured=is_configured)
+    return render_template("login.html")
 
 
 @bp.post("/logout")
@@ -600,29 +600,32 @@ def automation_delete(auto_id):
 # -------------------------------------------------------------- settings
 @bp.route("/settings", methods=["GET", "POST"])
 def settings():
-    from pathlib import Path
-    import config
+    from modules.auth import user_auth
     if request.method == "POST":
         set_setting("chrome_path", request.form.get("chrome_path", "").strip())
         set_setting("profiles_dir", request.form.get("profiles_dir", "").strip())
-        set_setting("firebase_web_api_key", request.form.get("firebase_web_api_key", "").strip())
-        set_setting("urban_vpn_path", request.form.get("urban_vpn_path", "").strip())
-        set_setting("urban_vpn_enabled", "1" if request.form.get("urban_vpn_enabled") == "1" else "0")
-        set_setting("default_proxy_enabled", "1" if request.form.get("default_proxy_enabled") == "1" else "0")
-        set_setting("default_proxy_type", request.form.get("default_proxy_type", "http").strip())
-        set_setting("default_proxy_host", request.form.get("default_proxy_host", "").strip())
-        set_setting("default_proxy_port", request.form.get("default_proxy_port", "").strip())
-        set_setting("default_proxy_user", request.form.get("default_proxy_user", "").strip())
-        set_setting("default_proxy_pass", request.form.get("default_proxy_pass", "").strip())
-        flash("Settings saved.", "success")
-        return redirect(url_for("dashboard.settings"))
 
-    custom_vpn = get_setting("urban_vpn_path", "")
-    vpn_dir = Path(custom_vpn) if custom_vpn else config.URBAN_VPN_DIR
-    vpn_detected = (vpn_dir / "manifest.json").exists()
-    vpn_enabled = get_setting("urban_vpn_enabled")
-    if vpn_enabled is None:
-        vpn_enabled = "1" if vpn_detected else "0"
+        # Password update
+        new_pwd = request.form.get("new_password", "")
+        if new_pwd:
+            cur_pwd = request.form.get("current_password", "")
+            confirm_pwd = request.form.get("confirm_password", "")
+            if new_pwd != confirm_pwd:
+                flash("New passwords do not match.", "error")
+                return redirect(url_for("dashboard.settings"))
+            uid = session.get("user", {}).get("id")
+            if uid:
+                ok, msg = user_auth.update_password(uid, cur_pwd, new_pwd)
+                if not ok:
+                    flash(msg, "error")
+                    return redirect(url_for("dashboard.settings"))
+                flash("Admin password updated successfully.", "success")
+            else:
+                flash("Unable to verify user session.", "error")
+                return redirect(url_for("dashboard.settings"))
+        else:
+            flash("Settings saved.", "success")
+        return redirect(url_for("dashboard.settings"))
 
     return render_template(
         "settings.html",
@@ -630,19 +633,4 @@ def settings():
         detected=chromium.find_chrome(),
         profiles_dir=get_setting("profiles_dir", ""),
         effective_dir=str(prm.profiles_root()),
-        secret_path=str(CLIENT_SECRET_PATH),
-        configured=oauth.client_configured(),
-        scopes=SCOPES,
-        redirect_uri=url_for("dashboard.oauth_callback", _external=True),
-        urban_vpn_path=custom_vpn,
-        urban_vpn_default=str(config.URBAN_VPN_DIR),
-        urban_vpn_detected=vpn_detected,
-        urban_vpn_enabled=(vpn_enabled == "1"),
-        default_proxy_enabled=(get_setting("default_proxy_enabled") == "1"),
-        default_proxy_type=get_setting("default_proxy_type", "http"),
-        default_proxy_host=get_setting("default_proxy_host", ""),
-        default_proxy_port=get_setting("default_proxy_port", ""),
-        default_proxy_user=get_setting("default_proxy_user", ""),
-        default_proxy_pass=get_setting("default_proxy_pass", ""),
-        firebase_web_api_key=get_setting("firebase_web_api_key", ""),
     )

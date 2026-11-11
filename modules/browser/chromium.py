@@ -125,8 +125,8 @@ def ensure_kroma_vpn_extension(profile_id: str, proxy_config: dict | None = None
             "type": (item.get("type") or "http").lower(),
             "host": str(item["host"]).strip(),
             "port": int(item["port"]),
-            "username": "",
-            "password": "",
+            "username": str(item.get("username") or "").strip(),
+            "password": str(item.get("password") or "").strip(),
             "country": item.get("country", f"Server #{idx+1}"),
         }
 
@@ -189,22 +189,30 @@ def ensure_proxy_auth_extension(profile_id: str, username: str, password: str) -
 def get_loaded_extensions() -> list[str]:
     """Return list of unpacked extension directory paths configured to load."""
     from pathlib import Path
-    from config import URBAN_VPN_DIR
+    from config import URBAN_VPN_DIR, BROWSEC_VPN_DIR, TOUCH_VPN_DIR
     from database.db import get_setting
 
     paths = []
+
+    # Direct VPN Extension injection (auto-activating, zero credentials required)
     custom_vpn = get_setting("urban_vpn_path")
-    vpn_dir = Path(custom_vpn) if custom_vpn else URBAN_VPN_DIR
-    enabled = get_setting("urban_vpn_enabled")
-    has_manifest = (vpn_dir / "manifest.json").exists()
-    if enabled == "1" and vpn_dir.exists() and has_manifest:
+    vpn_dir = Path(custom_vpn) if custom_vpn else None
+
+    # Load custom VPN if specified, otherwise auto-inject preconfigured Browsec / Touch / Urban
+    if vpn_dir and vpn_dir.exists() and (vpn_dir / "manifest.json").exists():
         paths.append(str(vpn_dir.resolve()))
+    elif BROWSEC_VPN_DIR.exists() and (BROWSEC_VPN_DIR / "manifest.json").exists():
+        paths.append(str(BROWSEC_VPN_DIR.resolve()))
+    elif TOUCH_VPN_DIR.exists() and (TOUCH_VPN_DIR / "manifest.json").exists():
+        paths.append(str(TOUCH_VPN_DIR.resolve()))
+    elif URBAN_VPN_DIR.exists() and (URBAN_VPN_DIR / "manifest.json").exists():
+        paths.append(str(URBAN_VPN_DIR.resolve()))
 
     custom_exts = get_setting("custom_extensions")
     if custom_exts:
         for p in custom_exts.split(";"):
             p_strip = p.strip()
-            if p_strip and os.path.exists(p_strip):
+            if p_strip and os.path.exists(p_strip) and p_strip not in paths:
                 paths.append(str(Path(p_strip).resolve()))
     return paths
 
@@ -229,24 +237,21 @@ def build_command(
     if profile_directory_name:
         cmd.append(f"--profile-directory={profile_directory_name}")
 
+    # Inject preconfigured VPN extension into every launched profile
     extensions = get_loaded_extensions()
 
-    # Kroma Auto-VPN Chrome Extension & Native Proxy setup
-    prof_id = (proxy_config.get("profile_id") if proxy_config else None) or profile_directory_name or "default"
-    vpn_ext_path, active_server = ensure_kroma_vpn_extension(prof_id, proxy_config)
-    if vpn_ext_path:
-        extensions.append(vpn_ext_path)
-
-    if active_server and active_server.get("host") and active_server.get("port"):
-        ptype = active_server.get("type", "http")
-        phost = active_server["host"]
-        pport = active_server["port"]
+    # Only attach explicit custom HTTP proxy if user intentionally set one on this profile
+    if proxy_config and proxy_config.get("proxy_host") and proxy_config.get("proxy_port"):
+        ptype = (proxy_config.get("proxy_type") or "http").lower()
+        phost = str(proxy_config["proxy_host"]).strip()
+        pport = int(proxy_config["proxy_port"])
         cmd.append(f"--proxy-server={ptype}://{phost}:{pport}")
 
-        puser = active_server.get("username")
-        ppass = active_server.get("password")
+        puser = proxy_config.get("proxy_user")
+        ppass = proxy_config.get("proxy_pass")
         if puser and ppass:
-            auth_ext = ensure_proxy_auth_extension(prof_id, puser, ppass)
+            prof_id = proxy_config.get("profile_id") or profile_directory_name or "default"
+            auth_ext = ensure_proxy_auth_extension(prof_id, str(puser), str(ppass))
             extensions.append(auth_ext)
 
     if extensions:
