@@ -35,8 +35,8 @@ def _security_guard():
     from modules.auth import user_auth
     endpoint = request.endpoint or ""
 
-    # Allow static assets and public endpoints unconditionally
-    if endpoint in ("static", "dashboard.login", "dashboard.vpn_prep"):
+    # Allow static assets, login, vpn_prep, and PKCE oauth_callback (runs in spawned Chrome profile)
+    if endpoint in ("static", "dashboard.login", "dashboard.vpn_prep", "dashboard.oauth_callback"):
         return None
 
     # Allow setup route when setup is enabled
@@ -316,6 +316,20 @@ def index():
     )
 
 
+def _oauth_redirect_uri() -> str:
+    """Return redirect URI matching registered OAuth client URIs to avoid redirect_uri_mismatch."""
+    cfg = config.get_client_secret_config() or {}
+    sec = cfg.get("web") or cfg.get("installed") or {}
+    uris = sec.get("redirect_uris") or []
+    ext = url_for("dashboard.oauth_callback", _external=True)
+    if ext in uris:
+        return ext
+    for u in uris:
+        if u.endswith("/oauth/callback"):
+            return u
+    return ext.replace("127.0.0.1", "localhost")
+
+
 # --------------------------------------------------------------- accounts
 @bp.route("/accounts")
 def accounts():
@@ -323,7 +337,7 @@ def accounts():
     return render_template(
         "accounts.html", accounts=am.list_accounts(q, status), q=q, status=status,
         configured=oauth.client_configured(),
-        redirect_uri=url_for("dashboard.oauth_callback", _external=True),
+        redirect_uri=_oauth_redirect_uri(),
         secret_path=str(CLIENT_SECRET_PATH),
     )
 
@@ -331,9 +345,9 @@ def accounts():
 @bp.route("/oauth/start")
 def oauth_start():
     if not oauth.client_configured():
-        flash(f"Google client file not found at {CLIENT_SECRET_PATH}. See Settings / README.", "error")
+        flash("Google OAuth client configuration not found.", "error")
         return redirect(url_for("dashboard.accounts"))
-    redirect_uri = url_for("dashboard.oauth_callback", _external=True)
+    redirect_uri = _oauth_redirect_uri()
     try:
         auth_url, state, verifier = oauth.start(redirect_uri)
     except Exception as exc:
@@ -377,7 +391,7 @@ def oauth_callback():
     
     try:
         creds, info = oauth.finish(
-            url_for("dashboard.oauth_callback", _external=True), state, verifier, request.url
+            _oauth_redirect_uri(), state, verifier, request.url
         )
         account_id, created = am.upsert_account(creds, info)
         # Bind or create profile record and mark as Signed in

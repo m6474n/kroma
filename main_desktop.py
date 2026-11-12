@@ -23,13 +23,13 @@ def main():
     print("=" * 60)
     print(f"  * Working directory: {config.BASE_DIR}")
     print(f"  * Database file:     {config.DB_PATH}")
-    print(f"  * Dashboard URL:     http://{config.HOST}:{config.PORT}")
+    print(f"  * Dashboard URL:     http://localhost:{config.PORT}")
     print("=" * 60)
     print("  Starting server and opening dashboard in default browser...\n")
 
     app = create_app()
 
-    url = f"http://{config.HOST}:{config.PORT}"
+    url = f"http://localhost:{config.PORT}"
     threading.Thread(target=_open_browser, args=(url,), daemon=True).start()
 
     try:
