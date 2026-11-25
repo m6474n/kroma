@@ -6,8 +6,8 @@
   <a class="btn primary" href="{{ url_for('dashboard.oauth_start') }}">+ Add Google Account</a>
 </div>
 
-{% if not configured and not release_mode %}
-<div class="flash info">OAuth client file not found at <code>{{ secret_path }}</code>. Redirect URI to register in Google Cloud: <code>{{ redirect_uri }}</code> (see Settings).</div>
+{% if not configured %}
+<div class="flash info">OAuth client configuration missing. Redirect URI: <code>{{ redirect_uri }}</code>.</div>
 {% endif %}
 
 <form method="get" class="filters">

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Account · Kroma{% endblock %}
+{% block content %}
+<div style="max-width: 780px; margin: 1.5rem auto;">
+  <div class="page-head" style="margin-bottom: 1.25rem;">
+    <h1 style="margin: 0;">Account &amp; Membership</h1>
+    <a class="btn sm" href="{{ url_for('dashboard.account') }}">↻ Refresh Status</a>
+  </div>
+
+  {% set status = (doc.get('membership_status') or doc.get('subscription_status') or 'active')|lower %}
+  {% set tier = (doc.get('subscription_tier') or 'pro')|upper %}
+  {% set max_p = doc.get('max_profiles') or 100 %}
+
+  <div class="stats" style="margin-bottom: 1.5rem;">
+    <div class="stat">
+      <b style="color: {{ '#15803d' if status in ('active', 'trial') else '#b91c1c' }}; text-transform: uppercase;">{{ status }}</b>
+      <span>Membership Status</span>
+    </div>
+    <div class="stat">
+      <b>{{ tier }}</b>
+      <span>Plan Tier</span>
+    </div>
+    <div class="stat">
+      <b>{{ profile_count }} / {{ max_p }}</b>
+      <span>Browser Profiles</span>
+    </div>
+    <div class="stat">
+      <b>{{ account_count }}</b>
+      <span>Google Accounts</span>
+    </div>
+  </div>
+
+  <section class="card" style="margin-bottom: 1.5rem;">
+    <h2 style="font-size: 1.1rem; font-weight: 600; margin-top: 0;">Profile Details</h2>
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+      <tbody>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0; width: 35%;">Username</td>
+          <td style="padding: 0.65rem 0; font-weight: 600;">{{ doc.get('username') or user.get('username') or '—' }}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0;">Email</td>
+          <td style="padding: 0.65rem 0;">{{ doc.get('email') or user.get('email') or '—' }}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0;">User ID (UID)</td>
+          <td style="padding: 0.65rem 0;"><code>{{ doc.get('uid') or user.get('id') or '—' }}</code></td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0;">Role</td>
+          <td style="padding: 0.65rem 0; text-transform: capitalize;">{{ doc.get('role') or 'client' }}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0;">Created At</td>
+          <td style="padding: 0.65rem 0;">{{ (doc.get('created_at') or '')|dt or '—' }}</td>
+        </tr>
+        <tr>
+          <td class="muted" style="padding: 0.65rem 0;">Last Updated</td>
+          <td style="padding: 0.65rem 0;">{{ (doc.get('updated_at') or '')|dt or '—' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2 style="font-size: 1.1rem; font-weight: 600; margin-top: 0;">Membership &amp; Quotas</h2>
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+      <tbody>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0; width: 35%;">Membership Status</td>
+          <td style="padding: 0.65rem 0;">
+            <span style="font-size: 0.75rem; padding: 2px 10px; border-radius: 99px; background: {{ '#dcfce7' if status in ('active', 'trial') else '#fee2e2' }}; color: {{ '#15803d' if status in ('active', 'trial') else '#b91c1c' }}; font-weight: 600; text-transform: uppercase;">
+              {{ status }}
+            </span>
+          </td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0;">Subscription Tier</td>
+          <td style="padding: 0.65rem 0; font-weight: 600;">{{ tier }}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0;">Expires At</td>
+          <td style="padding: 0.65rem 0;">{{ (doc.get('subscription_expires_at') or '')|dt or '—' }}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid var(--line);">
+          <td class="muted" style="padding: 0.65rem 0;">Active Profiles</td>
+          <td style="padding: 0.65rem 0;">{{ running_count }} running / {{ profile_count }} total (limit: {{ max_p }})</td>
+        </tr>
+        <tr>
+          <td class="muted" style="padding: 0.65rem 0;">Sync Source</td>
+          <td style="padding: 0.65rem 0;">{{ 'Firebase Cloud Firestore (Live)' if synced_from_firestore else 'Local Session' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

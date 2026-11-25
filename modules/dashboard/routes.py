@@ -792,129 +792,24 @@ def automation_delete(auto_id):
     return redirect(url_for("dashboard.automations"))
 
 
-# -------------------------------------------------------------- settings
-@bp.route("/settings", methods=["GET", "POST"])
-def settings():
-    if config.RELEASE_MODE:
-        abort(404)
-    from modules.auth import user_auth, firebase_auth, firestore
-    if request.method == "POST":
-        set_setting("chrome_path", request.form.get("chrome_path", "").strip())
-        set_setting("profiles_dir", request.form.get("profiles_dir", "").strip())
+# --------------------------------------------------------------- account
+@bp.get("/account")
+def account():
+    from modules.auth import membership_stream
 
-        fb_key = request.form.get("firebase_web_api_key")
-        if fb_key is not None:
-            firebase_auth.set_firebase_api_key(fb_key.strip())
+    user_sess = session.get("user") or {}
+    uid = user_sess.get("id")
+    ok_mem, _, live_prof = membership_stream.check_live_status(uid, force=True)
+    synced = isinstance(live_prof, dict) and bool(live_prof)
+    doc = live_prof if synced else (user_sess.get("subscription") or {})
 
-        fb_proj = request.form.get("firebase_project_id")
-        if fb_proj is not None:
-            firestore.set_firebase_project_id(fb_proj.strip())
-
-        # Password update
-        new_pwd = request.form.get("new_password", "")
-        if new_pwd:
-            cur_pwd = request.form.get("current_password", "")
-            confirm_pwd = request.form.get("confirm_password", "")
-            if new_pwd != confirm_pwd:
-                flash("New passwords do not match.", "error")
-                return redirect(url_for("dashboard.settings"))
-            uid = session.get("user", {}).get("id")
-            if uid:
-                ok, msg = user_auth.update_password(uid, cur_pwd, new_pwd)
-                if not ok:
-                    flash(msg, "error")
-                    return redirect(url_for("dashboard.settings"))
-                flash("Admin password updated successfully.", "success")
-            else:
-                flash("Unable to verify user session.", "error")
-                return redirect(url_for("dashboard.settings"))
-        else:
-            flash("Settings saved.", "success")
-        return redirect(url_for("dashboard.settings"))
-
+    pstats = prm.stats()
     return render_template(
-        "settings.html",
-        chrome_path=get_setting("chrome_path", ""),
-        detected=chromium.find_chrome(),
-        profiles_dir=get_setting("profiles_dir", ""),
-        effective_dir=str(prm.profiles_root()),
-        firebase_web_api_key=firebase_auth.get_firebase_api_key(),
-        firebase_project_id=firestore.get_firebase_project_id(),
-        client_secret_exists=oauth.client_configured(),
-        client_secret_path=str(CLIENT_SECRET_PATH),
+        "account.html",
+        user=user_sess,
+        doc=doc,
+        synced_from_firestore=synced,
+        profile_count=pstats.get("profiles", 0),
+        running_count=pstats.get("running", 0),
+        account_count=pstats.get("accounts", 0),
     )
-
-
-@bp.post("/settings/client-secret")
-def settings_client_secret():
-    if config.RELEASE_MODE:
-        abort(404)
-    import json
-    raw = request.form.get("client_secret_json", "").strip()
-    if not raw:
-        flash("Please paste valid Google OAuth client_secret JSON.", "error")
-        return redirect(url_for("dashboard.settings"))
-    try:
-        parsed = json.loads(raw)
-        if not isinstance(parsed, dict) or not any(k in parsed for k in ("installed", "web")):
-            flash("Invalid Google OAuth JSON: missing 'installed' or 'web' key.", "error")
-            return redirect(url_for("dashboard.settings"))
-        CLIENT_SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CLIENT_SECRET_PATH.write_text(json.dumps(parsed, indent=2), encoding="utf-8")
-        flash(f"Saved client_secret.json to {CLIENT_SECRET_PATH}", "success")
-    except Exception as exc:
-        flash(f"Invalid JSON: {exc}", "error")
-    return redirect(url_for("dashboard.settings"))
-
-
-@bp.post("/settings/firebase-sync")
-def settings_firebase_sync():
-    if config.RELEASE_MODE:
-        abort(404)
-    from database.db import now_iso
-    from modules.auth import firebase_auth, firestore
-
-    email = request.form.get("sync_email", "").strip()
-    password = request.form.get("sync_password", "")
-    tier = request.form.get("sync_tier", "pro").strip() or "pro"
-
-    if not email or not password:
-        flash("Email and password are required to create/sync Firebase user.", "error")
-        return redirect(url_for("dashboard.settings"))
-
-    if not firebase_auth.is_firebase_configured():
-        flash("Firebase Web API Key is not configured.", "error")
-        return redirect(url_for("dashboard.settings"))
-
-    ok_fb, res_fb = firebase_auth.sign_up_with_email_password(email, password)
-    if not ok_fb and "already exists" in str(res_fb).lower():
-        ok_fb, res_fb = firebase_auth.sign_in_with_email_password(email, password)
-
-    if not ok_fb or not isinstance(res_fb, dict):
-        flash(f"Firebase Auth failed: {res_fb}", "error")
-        return redirect(url_for("dashboard.settings"))
-
-    uid = res_fb.get("localId")
-    token = res_fb.get("idToken")
-
-    profile_doc = {
-        "uid": uid,
-        "username": email.split("@")[0],
-        "email": email,
-        "password": password,
-        "membership_status": "active",
-        "subscription_status": "active",
-        "subscription_tier": tier,
-        "subscription_expires_at": "2099-12-31T23:59:59Z",
-        "max_profiles": 100,
-        "role": "client",
-        "created_at": now_iso(),
-        "updated_at": now_iso(),
-    }
-    ok_fs, msg_fs = firestore.save_user_profile(uid, profile_doc, id_token=token)
-    if not ok_fs:
-        flash(f"User created in Firebase Auth (UID: {uid}), but Firestore save failed: {msg_fs}", "warning")
-    else:
-        flash(f"User '{email}' created & saved to Firebase Auth + Cloud Firestore (UID: {uid})!", "success")
-
-    return redirect(url_for("dashboard.settings"))
