@@ -133,3 +133,4 @@ def check_live_status(uid: str | None, force: bool = False) -> tuple[bool, str, 
         if uid in _sessions:
             _sessions[uid]["last_checked"] = now
     return not entry_copy.get("locked", False), entry_copy.get("status", "active"), entry_copy.get("profile")
+
