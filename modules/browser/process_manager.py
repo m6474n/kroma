@@ -66,12 +66,12 @@ def get_chrome_hwnds() -> set[int]:
 def running_map() -> dict:
     """{ (norm_user_data_dir, profile_name): [psutil.Process, ...] } for running browsers."""
     result: dict = {}
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
             pname = (proc.info.get("name") or "").lower()
             if not any(b in pname for b in ("chrome", "chromium")):
                 continue
-            cmd = proc.info["cmdline"]
+            cmd = proc.cmdline()
             d, p = _cmd_info(cmd)
         except Exception:
             continue

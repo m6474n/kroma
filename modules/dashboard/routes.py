@@ -254,12 +254,14 @@ def api_membership_stream():
     uid = user.get("id") if isinstance(user, dict) else None
 
     def generate():
+        first = True
         while True:
             if not uid:
                 yield f"data: {json.dumps({'locked': True, 'status': 'unauthenticated'})}\n\n"
                 break
 
-            ok_mem, status_str, prof = membership_stream.check_live_status(uid, force=True)
+            ok_mem, status_str, prof = membership_stream.check_live_status(uid, force=not first)
+            first = False
             tier = prof.get("subscription_tier", "pro") if isinstance(prof, dict) else "pro"
             payload = {
                 "locked": not ok_mem,

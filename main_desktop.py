@@ -10,7 +10,7 @@ from app import create_app
 
 
 def _open_browser(url: str):
-    time.sleep(1.2)
+    time.sleep(0.5)
     try:
         webbrowser.open(url)
     except Exception:

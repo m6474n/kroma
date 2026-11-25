@@ -1,13 +1,14 @@
 """Firebase Authentication handler using Google Identity Toolkit REST API."""
-import json
 import os
-import urllib.error
-import urllib.request
+import requests
 from database.db import get_setting, set_setting
 
 SIGN_IN_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={}"
 SIGN_UP_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={}"
 REFRESH_TOKEN_URL = "https://securetoken.googleapis.com/v1/token?key={}"
+
+_http = requests.Session()
+_http.headers.update({"Content-Type": "application/json", "User-Agent": "Kroma-Auth/1.0"})
 
 
 def get_firebase_api_key() -> str:
@@ -26,31 +27,17 @@ def is_firebase_configured() -> bool:
 def _post_identity_api(url: str, payload: dict) -> tuple[bool, dict | str]:
     api_key = get_firebase_api_key()
     if not api_key:
-        return False, "Firebase Web API Key is not configured. Please set it in Settings."
-
-    req_url = url.format(api_key)
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        req_url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "Kroma-Auth/1.0",
-        },
-        method="POST",
-    )
+        return False, "Firebase Web API Key is not configured."
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return True, data
-    except urllib.error.HTTPError as exc:
+        resp = _http.post(url.format(api_key), json=payload, timeout=10)
+        if resp.ok:
+            return True, resp.json()
         try:
-            err_data = json.loads(exc.read().decode("utf-8"))
-            err_msg = err_data.get("error", {}).get("message", "Authentication failed.")
+            err_msg = resp.json().get("error", {}).get("message", "Authentication failed.")
             return False, _human_error(err_msg)
         except Exception:
-            return False, f"Firebase HTTP error ({exc.code})."
+            return False, f"Firebase HTTP error ({resp.status_code})."
     except Exception as exc:
         return False, f"Network error connecting to Firebase: {exc}"
 

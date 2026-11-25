@@ -1,12 +1,12 @@
 """Firebase Cloud Firestore REST API integration for user profiles and subscriptions."""
-import json
 import os
-import urllib.error
-import urllib.request
+import requests
 from database.db import get_setting, set_setting
 from modules.auth.firebase_auth import get_firebase_api_key
 
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{path}"
+_http = requests.Session()
+_http.headers.update({"User-Agent": "Kroma-Firestore/1.0"})
 
 
 def get_firebase_project_id() -> str:
@@ -85,26 +85,19 @@ def save_user_profile(user_id: str, profile_data: dict, id_token: str | None = N
     url += f"?key={api_key}"
 
     fields = {k: to_firestore_val(v) for k, v in profile_data.items()}
-    body = json.dumps({"fields": fields}).encode("utf-8")
-
-    headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Kroma-Firestore/1.0",
-    }
+    headers = {"Content-Type": "application/json"}
     if id_token:
         headers["Authorization"] = f"Bearer {id_token}"
 
-    req = urllib.request.Request(url, data=body, headers=headers, method="PATCH")
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        resp = _http.patch(url, json={"fields": fields}, headers=headers, timeout=10)
+        if resp.ok:
             return True, "Profile saved in Firestore successfully."
-    except urllib.error.HTTPError as exc:
         try:
-            err = json.loads(exc.read().decode("utf-8"))
-            msg = err.get("error", {}).get("message", f"HTTP {exc.code}")
+            msg = resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
             return False, f"Firestore error: {msg}"
         except Exception:
-            return False, f"Firestore HTTP error ({exc.code})."
+            return False, f"Firestore HTTP error ({resp.status_code})."
     except Exception as exc:
         return False, f"Failed to connect to Firestore: {exc}"
 
@@ -119,27 +112,21 @@ def get_user_profile(user_id: str, id_token: str | None = None) -> tuple[bool, d
     url = FIRESTORE_URL.format(project_id=project_id, path=f"users/{user_id}")
     url += f"?key={api_key}"
 
-    headers = {
-        "User-Agent": "Kroma-Firestore/1.0",
-    }
+    headers = {}
     if id_token:
         headers["Authorization"] = f"Bearer {id_token}"
 
-    req = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            profile = from_firestore_doc(data)
-            return True, profile
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
+        resp = _http.get(url, headers=headers, timeout=10)
+        if resp.ok:
+            return True, from_firestore_doc(resp.json())
+        if resp.status_code == 404:
             return False, "User profile not found in Firestore."
         try:
-            err = json.loads(exc.read().decode("utf-8"))
-            msg = err.get("error", {}).get("message", f"HTTP {exc.code}")
+            msg = resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
             return False, f"Firestore error: {msg}"
         except Exception:
-            return False, f"Firestore HTTP error ({exc.code})."
+            return False, f"Firestore HTTP error ({resp.status_code})."
     except Exception as exc:
         return False, f"Failed to connect to Firestore: {exc}"
 
