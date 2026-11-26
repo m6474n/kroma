@@ -131,6 +131,18 @@
         <button class="btn" id="auto_cancel_btn" type="button" style="display:none;" onclick="cancelEditAutomation()">Cancel</button>
       </div>
     </form>
+
+    <hr style="margin:20px 0; border:none; border-top:1px solid #e5e5e0;">
+    <h3 style="margin:0 0 8px;">Bulk Proxy Pool (Shuffle &amp; Assign)</h3>
+    <form method="post" action="{{ url_for('dashboard.proxies_bulk_assign') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="proxy_list" rows="4" placeholder="http://173.212.207.102:1214&#10;socks5://user:pass@host:port" required style="width:100%; padding:8px; border:1px solid #d0d0cc; border-radius:6px; font-family:monospace; font-size:0.85rem;">http://173.212.207.102:1214</textarea>
+      <label style="display:flex; align-items:center; gap:6px; margin:8px 0; font-size:0.85rem; cursor:pointer;">
+        <input type="checkbox" name="verify_first" value="1" checked>
+        <span>Verify proxies first (skip dead ones)</span>
+      </label>
+      <button type="submit" class="btn sm">Shuffle &amp; Assign to All Profiles</button>
+    </form>
   </section>
 
   <!-- Right Column: Existing Automations -->
@@ -203,7 +215,7 @@
               "duration_seconds": a.duration_seconds,
               "is_loop": a.is_loop,
               "repeat_count": a.repeat_count,
-              "profile_ids": a.profile_ids
+              "profile_ids": a.get("profile_ids") or (a.get("profiles", [])|map(attribute="id")|list)
             }|tojson }})'>Edit</button>
             <form method="post" action="{{ url_for('dashboard.automation_delete', auto_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Delete this automation?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -368,9 +380,13 @@ function editAutomation(data) {
   toggleRepeat(loopChk.checked);
   document.getElementById('repeat_count').value = data.repeat_count || 1;
 
-  const selected = new Set(data.profile_ids || []);
+  let rawIds = data.profile_ids || [];
+  if (typeof rawIds === 'string') {
+    try { rawIds = JSON.parse(rawIds); } catch (e) { rawIds = []; }
+  }
+  const selected = new Set((Array.isArray(rawIds) ? rawIds : []).map(p => String(typeof p === 'object' && p !== null ? (p.id || '') : p)));
   document.querySelectorAll('.auto-profile-chk').forEach(chk => {
-    chk.checked = selected.has(chk.value);
+    chk.checked = selected.has(String(chk.value));
   });
   updateSelCount();
 

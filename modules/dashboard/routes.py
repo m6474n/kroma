@@ -827,6 +827,104 @@ def automation_delete(auto_id):
     return redirect(url_for("dashboard.automations"))
 
 
+@bp.post("/proxies/bulk-assign")
+def proxies_bulk_assign():
+    import concurrent.futures
+    import random
+    import re
+    import requests as req_lib
+    from database.db import db
+    from modules.browser import profile_manager as prm
+
+    raw = request.form.get("proxy_list", "")
+    verify_first = request.form.get("verify_first") == "1"
+
+    parsed = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.match(r"^(?:(https?|socks4|socks5)://)?(?:([^:@]+):([^@]+)@)?([^:]+):(\d+)$", line, re.I)
+        if m:
+            ptype = (m.group(1) or "http").lower()
+            puser = m.group(2) or ""
+            ppass = m.group(3) or ""
+            phost = m.group(4).strip()
+            pport = int(m.group(5))
+            parsed.append((ptype, phost, pport, puser, ppass))
+
+    if not parsed:
+        flash("No valid proxy lines found. Use format: http://host:port or socks5://user:pass@host:port", "error")
+        return redirect(url_for("dashboard.automations"))
+
+    if verify_first:
+        def _check(item):
+            ptype, phost, pport, puser, ppass = item
+            auth = f"{puser}:{ppass}@" if puser and ppass else ""
+            purl = f"{ptype}://{auth}{phost}:{pport}"
+            try:
+                r = req_lib.get("https://api.ipify.org?format=json", proxies={"http": purl, "https": purl}, timeout=5)
+                return item if r.ok else None
+            except Exception:
+                return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            valid = [x for x in ex.map(_check, parsed) if x is not None]
+    else:
+        valid = parsed
+
+    if not valid:
+        flash("None of the provided proxies responded. Nothing was assigned.", "error")
+        return redirect(url_for("dashboard.automations"))
+
+    profiles = prm.list_profiles()
+    if not profiles:
+        flash("No profiles found to assign proxies to.", "error")
+        return redirect(url_for("dashboard.automations"))
+
+    random.shuffle(valid)
+    with db() as conn:
+        for idx, p in enumerate(profiles):
+            ptype, phost, pport, puser, ppass = valid[idx % len(valid)]
+            conn.execute(
+                """UPDATE browser_profiles
+                   SET proxy_enabled=1, proxy_type=?, proxy_host=?, proxy_port=?, proxy_user=?, proxy_pass=?
+                   WHERE id=?""",
+                (ptype, phost, pport, puser, ppass, p["id"]),
+            )
+
+    flash(f"Assigned {len(valid)} valid shuffled proxies across {len(profiles)} profiles.", "success")
+    return redirect(url_for("dashboard.automations"))
+
+
+@bp.post("/api/proxies/test")
+def api_proxies_test():
+    import requests as req_lib
+    data = request.get_json(silent=True) or request.form
+    ptype = (data.get("proxy_type") or "http").strip().lower()
+    host = (data.get("proxy_host") or "").strip()
+    port = str(data.get("proxy_port") or "").strip()
+    user = (data.get("proxy_user") or "").strip()
+    pwd = (data.get("proxy_pass") or "").strip()
+
+    if not host or not port:
+        return jsonify({"ok": False, "error": "Host and port are required."}), 400
+
+    auth = f"{user}:{pwd}@" if user and pwd else ""
+    proxy_url = f"{ptype}://{auth}{host}:{port}"
+    try:
+        r = req_lib.get(
+            "https://api.ipify.org?format=json",
+            proxies={"http": proxy_url, "https": proxy_url},
+            timeout=6,
+        )
+        if r.ok:
+            return jsonify({"ok": True, "ip": r.json().get("ip"), "proxy": f"{ptype}://{host}:{port}"})
+        return jsonify({"ok": False, "error": f"HTTP {r.status_code}"})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)})
+
+
 # ----------------------------------------------------------- super admin
 def _is_super_admin() -> bool:
     u = session.get("user") or {}
