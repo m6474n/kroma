@@ -95,6 +95,12 @@ def build(onefile: bool = False, debug: bool = False):
 
     if sys.platform == "darwin":
         args.append("--windowed")
+        icns_path = ROOT_DIR / "static" / "kroma.icns"
+        png_path = ROOT_DIR / "static" / "kroma_icon.png"
+        if icns_path.exists():
+            args.extend(["--icon", str(icns_path)])
+        elif png_path.exists():
+            args.extend(["--icon", str(png_path)])
     elif onefile:
         args.append("--onefile")
     else:
@@ -119,6 +125,8 @@ def build(onefile: bool = False, debug: bool = False):
         "cryptography",
         "--hidden-import",
         "cryptography.fernet",
+        "--collect-all",
+        "cryptography",
         "--hidden-import",
         "psutil",
         "--hidden-import",
@@ -177,6 +185,16 @@ def build(onefile: bool = False, debug: bool = False):
     # Post-build setup
     if sys.platform == "darwin" and (dist_dir / f"{app_name}.app").exists():
         output_target = dist_dir / f"{app_name}.app"
+        # Ensure Homebrew OpenSSL 3 dylibs (if used by cryptography) aren't shadowed by Python's older libssl.3.dylib
+        frameworks_dir = output_target / "Contents" / "Frameworks"
+        for brew_ssl_dir in (Path("/usr/local/opt/openssl@3/lib"), Path("/opt/homebrew/opt/openssl@3/lib")):
+            if (brew_ssl_dir / "libssl.3.dylib").exists() and frameworks_dir.exists():
+                for dylib in ("libssl.3.dylib", "libcrypto.3.dylib"):
+                    src_dylib = brew_ssl_dir / dylib
+                    if src_dylib.exists():
+                        shutil.copy2(src_dylib, frameworks_dir / dylib)
+                subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(output_target)], check=False)
+                break
         zip_name = f"{app_name}-macOS"
         zip_path = dist_dir / f"{zip_name}.zip"
         shutil.make_archive(str(dist_dir / zip_name), "zip", root_dir=str(dist_dir), base_dir=f"{app_name}.app")

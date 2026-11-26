@@ -96,7 +96,7 @@ FLASK_SECRET_PATH = DATA_DIR / "flask_secret"
 
 # Local only by default. Do not change to 0.0.0.0 unless you know what you are doing.
 HOST = "127.0.0.1"
-PORT = int(os.environ.get("PORT", 5000))
+PORT = int(os.environ.get("PORT", 5050))
 
 # Basic identity scopes only: no access to Gmail, Drive, YouTube etc.
 SCOPES = [

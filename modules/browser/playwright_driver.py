@@ -31,6 +31,12 @@ def _prepare_driver_profile_dir(profile: dict) -> str:
 
     if not pw_dir.exists() and src_sub.exists():
         default_sub.mkdir(parents=True, exist_ok=True)
+        local_state = p_dir / "Local State"
+        if local_state.exists():
+            try:
+                shutil.copy2(local_state, pw_dir / "Local State")
+            except Exception:
+                pass
         for item in ("Cookies", "Network", "Login Data", "Web Data", "Preferences", "Local Extension Settings"):
             s = src_sub / item
             d = default_sub / item
@@ -208,32 +214,17 @@ def run_automated_browser(
         "--no-first-run",
         "--no-default-browser-check",
         "--window-size=1024,768",
+        "--autoplay-policy=no-user-gesture-required",
     ]
-
-    ext_id = "eppiocemhmnlbhjplcgkofciiegomcon"
-    has_urban = URBAN_VPN_DIR.exists() and (URBAN_VPN_DIR / "manifest.json").exists()
-    if has_urban:
-        ext_path = str(URBAN_VPN_DIR.resolve())
-        args.extend([
-            f"--disable-extensions-except={ext_path}",
-            f"--load-extension={ext_path}",
-        ])
 
     launch_kwargs = {
         "user_data_dir": user_data_dir,
+        "channel": "chrome",
         "headless": False,
         "args": args,
+        "ignore_default_args": ["--no-sandbox"],
         "viewport": None,
     }
-
-    # Explicit custom proxy if assigned to this profile
-    if proxy_config and proxy_config.get("proxy_host") and proxy_config.get("proxy_port"):
-        ptype = (proxy_config.get("proxy_type") or "http").lower()
-        p_dict = {"server": f"{ptype}://{proxy_config['proxy_host']}:{proxy_config['proxy_port']}"}
-        if proxy_config.get("proxy_user") and proxy_config.get("proxy_pass"):
-            p_dict["username"] = str(proxy_config["proxy_user"])
-            p_dict["password"] = str(proxy_config["proxy_pass"])
-        launch_kwargs["proxy"] = p_dict
 
     ctx = None
     try:
@@ -250,22 +241,6 @@ def run_automated_browser(
                         raise
                 else:
                     raise
-
-            # Detect extension ID dynamically from service worker if available
-            time.sleep(1.5)
-            for sw in ctx.service_workers:
-                if "chrome-extension://" in sw.url:
-                    ext_id = sw.url.split("/")[2]
-                    break
-
-            # Step 1: Auto-configure and connect Urban VPN to United Kingdom
-            if has_urban and not (proxy_config and proxy_config.get("proxy_host")):
-                set_status("Connecting UK VPN")
-                vpn_ok = _auto_connect_urban_vpn(ctx, ext_id, target_country, log, stop_event)
-                if vpn_ok:
-                    log(f"Urban VPN ready ({target_country}). Navigating to target URL.", "success")
-                else:
-                    log("Proceeding to target URL after Urban VPN setup step.", "info")
 
             if stop_event.is_set():
                 return True, "Stopped before target navigation."

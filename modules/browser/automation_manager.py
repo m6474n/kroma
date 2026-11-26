@@ -1,5 +1,6 @@
 """Background runner for browser profile automations."""
 import json
+import sys
 import threading
 import time
 import uuid
@@ -185,6 +186,51 @@ def _set_status(auto_id: str, status: str, current_iteration: int | None = None)
             )
 
 
+def _get_mac_front_window_id() -> str | None:
+    """Return the AppleScript window ID of Google Chrome's frontmost window on macOS."""
+    if sys.platform != "darwin":
+        return None
+    import subprocess
+    try:
+        res = subprocess.run(
+            ["osascript", "-e", 'tell application "Google Chrome" to get id of front window'],
+            capture_output=True, text=True, timeout=3
+        )
+        wid = res.stdout.strip()
+        return wid if wid.isdigit() else None
+    except Exception:
+        return None
+
+
+def _close_tracked_window(auto_id: str, pid: str):
+    """Close the exact tracked Chrome window for (auto_id, pid) from the DB."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT window_id FROM automation_windows WHERE automation_id=? AND profile_id=?",
+            (auto_id, pid),
+        ).fetchone()
+        conn.execute(
+            "DELETE FROM automation_windows WHERE automation_id=? AND profile_id=?",
+            (auto_id, pid),
+        )
+    if row and sys.platform == "darwin":
+        import subprocess
+        wid = row["window_id"]
+        script = f'tell application "Google Chrome" to close (first window whose id is {wid})'
+        subprocess.run(["osascript", "-e", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+
+
+def _save_tracked_window(auto_id: str, pid: str, window_id: str):
+    """Persist the Chrome window ID for (auto_id, pid) in the DB."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    with db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO automation_windows (automation_id, profile_id, window_id, created_at) VALUES (?, ?, ?, ?)",
+            (auto_id, pid, window_id, now),
+        )
+
+
 def _run_profile_task(
     auto_id: str,
     auto_name: str,
@@ -198,11 +244,8 @@ def _run_profile_task(
     prof_iters: dict,
     vpn_delay: int = 15,
 ):
-    """Runs a single profile using Playwright driver (auto Urban VPN + target URL + countdown)."""
-    from modules.browser import playwright_driver
-
+    """Runs a single profile using direct Chrome launch + countdown."""
     profile = prm.get_profile(pid)
-    proxy_cfg = prm.get_profile_proxy(pid)
 
     def _on_status(st: str):
         with _lock:
@@ -231,23 +274,41 @@ def _run_profile_task(
                 add_log(auto_id, auto_name, f"Profile '{pname}' not found.", "error")
                 break
 
-            ok, run_msg = playwright_driver.run_automated_browser(
-                profile=profile,
-                url=url,
-                duration_seconds=duration,
-                stop_event=stop_event,
-                on_status=_on_status,
-                on_timer=_on_timer,
-                on_log=_on_log,
-                target_country="United Kingdom",
-                proxy_config=proxy_cfg,
-            )
+            try:
+                _close_tracked_window(auto_id, pid)
+                prm.close(pid)
+                time.sleep(0.5)
+            except Exception:
+                pass
+
+            _on_status("Launching")
+            add_log(auto_id, auto_name, f"Launching Chrome for '{pname}' -> {url}", "info")
+            with _lock:
+                ok, run_msg = prm.launch(pid, url=url)
+                if ok and sys.platform == "darwin":
+                    time.sleep(0.8)
+                    wid = _get_mac_front_window_id()
+                    if wid:
+                        _save_tracked_window(auto_id, pid, wid)
 
             if not ok:
-                add_log(auto_id, auto_name, f"Driver error for '{pname}': {run_msg}", "error")
+                add_log(auto_id, auto_name, f"Launch error for '{pname}': {run_msg}", "error")
                 _on_status("Error")
                 time.sleep(2)
                 continue
+
+            _on_status("Running")
+            for rem in range(duration, 0, -1):
+                if stop_event.is_set():
+                    break
+                _on_timer(rem)
+                time.sleep(1)
+
+            try:
+                _close_tracked_window(auto_id, pid)
+                prm.close(pid)
+            except Exception:
+                pass
 
             prof_iters[pid] = prof_iters.get(pid, 0) + 1
 
@@ -396,6 +457,7 @@ def stop_automation(auto_id: str) -> tuple[bool, str]:
     if auto:
         for pid in auto.get("profile_ids_list", []):
             try:
+                _close_tracked_window(auto_id, pid)
                 prm.close(pid)
             except Exception:
                 pass

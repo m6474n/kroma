@@ -75,6 +75,14 @@ CREATE TABLE IF NOT EXISTS automations (
     updated_at DATETIME NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS automation_windows (
+    automation_id TEXT NOT NULL,
+    profile_id TEXT NOT NULL,
+    window_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (automation_id, profile_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_profiles_account ON browser_profiles(account_id);
 """
 

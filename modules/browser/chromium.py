@@ -257,5 +257,7 @@ def build_command(
     if extensions:
         cmd.append(f"--load-extension={','.join(extensions)}")
 
+    if url:
+        cmd.append("--new-window")
     cmd.append(target_url)
     return cmd

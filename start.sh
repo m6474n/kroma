@@ -28,9 +28,9 @@ fi
 
 # Open dashboard in browser
 if command -v open &> /dev/null; then
-    (sleep 1.5 && open "http://localhost:5000") &
+    (sleep 1.5 && open "http://localhost:5050") &
 elif command -v xdg-open &> /dev/null; then
-    (sleep 1.5 && xdg-open "http://localhost:5000") &
+    (sleep 1.5 && xdg-open "http://localhost:5050") &
 fi
 
 # Launch app
