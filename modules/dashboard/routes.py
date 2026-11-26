@@ -754,6 +754,15 @@ def vpn_prep():
     return render_template("vpn_prep.html", target_url=target, wait_seconds=wait)
 
 
+@bp.post("/automations/warmup")
+def automation_warmup():
+    from modules.browser import automation_manager as atm
+    profile_ids = request.form.getlist("profile_ids")
+    ok, msg = atm.start_warmup(profile_ids)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("dashboard.automations"))
+
+
 @bp.post("/automations/create")
 def automation_create():
     from modules.browser import automation_manager as atm

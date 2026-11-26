@@ -143,6 +143,27 @@
       </label>
       <button type="submit" class="btn sm">Shuffle &amp; Assign to All Profiles</button>
     </form>
+
+    <hr style="margin:20px 0; border:none; border-top:1px solid #e5e5e0;">
+    <h3 style="margin:0 0 6px;">Profile Warmup</h3>
+    <p class="muted" style="font-size:0.85rem; margin:0 0 8px;">Visit everyday sites with randomized timing to build natural cookies &amp; history.</p>
+    <form method="post" action="{{ url_for('dashboard.automation_warmup') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="max-height:140px; overflow-y:auto; border:1px solid #d0d0cc; padding:8px; border-radius:6px; margin-bottom:8px; background:#fafaf8;">
+        {% for p in profiles %}
+          <label style="display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; font-size:0.88rem;">
+            <input type="checkbox" name="profile_ids" value="{{ p.id }}" class="warmup-profile-chk">
+            <span><b>{{ p.profile_name }}</b> <span class="muted">({{ p.email }})</span></span>
+          </label>
+        {% else %}
+          <p class="muted">No profiles found.</p>
+        {% endfor %}
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button type="submit" class="btn primary sm">Start Warmup</button>
+        <button type="button" class="btn sm" onclick="document.querySelectorAll('.warmup-profile-chk').forEach(c=>c.checked=true)">Select All</button>
+      </div>
+    </form>
   </section>
 
   <!-- Right Column: Existing Automations -->

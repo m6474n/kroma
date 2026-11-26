@@ -503,3 +503,59 @@ def stop_all_automations():
             stop_automation(auto_id)
         except Exception:
             pass
+
+
+WARMUP_SITES = [
+    "https://www.youtube.com",
+    "https://www.youtube.com/feed/trending",
+    "https://www.youtube.com/shorts",
+    "https://www.youtube.com/results?search_query=lofi+hip+hop",
+    "https://www.youtube.com/results?search_query=nature+documentary+4k",
+]
+
+
+def start_warmup(profile_ids: list[str]) -> tuple[bool, str]:
+    """Run a background warmup pass across selected profiles to build natural cookies/history."""
+    import random
+
+    if not profile_ids:
+        return False, "No profiles selected for warmup."
+
+    warmup_id = f"warmup-{str(uuid.uuid4())[:8]}"
+
+    def _warmup_worker():
+        add_log(warmup_id, "Profile Warmup", f"Starting warmup for {len(profile_ids)} profile(s)...", "info")
+        for idx, pid in enumerate(profile_ids):
+            prof = prm.get_profile(pid)
+            pname = prof["profile_name"] if prof else pid
+            sites = random.sample(WARMUP_SITES, k=min(2, len(WARMUP_SITES)))
+            for site in sites:
+                try:
+                    _close_tracked_window(warmup_id, pid)
+                    prm.close(pid)
+                except Exception:
+                    pass
+                with _lock:
+                    ok, msg = prm.launch(pid, url=site)
+                    if ok and sys.platform == "darwin":
+                        time.sleep(0.8)
+                        wid = _get_mac_front_window_id()
+                        if wid:
+                            _save_tracked_window(warmup_id, pid, wid)
+                if not ok:
+                    add_log(warmup_id, "Profile Warmup", f"Warmup launch failed for '{pname}': {msg}", "error")
+                    break
+                wait_s = random.randint(10, 18)
+                add_log(warmup_id, "Profile Warmup", f"Warming '{pname}' on {site} ({wait_s}s)...", "info")
+                time.sleep(wait_s)
+                try:
+                    _close_tracked_window(warmup_id, pid)
+                    prm.close(pid)
+                except Exception:
+                    pass
+            if idx < len(profile_ids) - 1:
+                time.sleep(random.uniform(1.5, 4.0))
+        add_log(warmup_id, "Profile Warmup", "Warmup completed for all selected profiles.", "success")
+
+    threading.Thread(target=_warmup_worker, daemon=True).start()
+    return True, f"Warmup started for {len(profile_ids)} profile(s)."
