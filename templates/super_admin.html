@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+  <div>
+    <h1 style="margin:0;">Super Admin Panel</h1>
+    <p class="muted" style="margin:4px 0 0;">Manage all users, subscription plans, and account limitations in Firebase.</p>
+  </div>
+</div>
+
+<!-- Subscription Plans Overview -->
+<section class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Subscription Plans &amp; Limitations</h2>
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+    {% for key, plan in plans.items() %}
+      <div style="border:1px solid #d0d0cc; border-radius:10px; padding:14px; background:#fafaf8;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <b style="font-size:1.05rem;">{{ plan.name }}</b>
+          <span style="font-weight:700; color:#2563eb;">{{ plan.price }}</span>
+        </div>
+        <p class="muted" style="font-size:0.85rem; margin:0 0 10px;">{{ plan.description }}</p>
+        <ul style="margin:0; padding-left:18px; font-size:0.88rem; line-height:1.6;">
+          <li>Max Profiles: <b>{{ plan.max_profiles }}</b></li>
+          <li>Max Automations: <b>{{ plan.max_automations }}</b></li>
+          <li>Max Concurrent / Run: <b>{{ plan.max_concurrent_profiles }}</b></li>
+        </ul>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Create New User -->
+<section class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Create New User</h2>
+  <form method="post" action="{{ url_for('dashboard.super_admin_create_user') }}" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; align-items:end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label style="font-size:0.85rem;"><b>Email</b></label>
+      <input type="email" name="email" required placeholder="user@kroma.com" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ccc; border-radius:6px;">
+    </div>
+    <div>
+      <label style="font-size:0.85rem;"><b>Password</b></label>
+      <input type="password" name="password" required placeholder="Min 6 chars" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ccc; border-radius:6px;">
+    </div>
+    <div>
+      <label style="font-size:0.85rem;"><b>Username</b></label>
+      <input type="text" name="username" placeholder="Optional" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ccc; border-radius:6px;">
+    </div>
+    <div>
+      <label style="font-size:0.85rem;"><b>Plan</b></label>
+      <select name="subscription_tier" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ccc; border-radius:6px;">
+        {% for key, plan in plans.items() %}
+          <option value="{{ key }}">{{ plan.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label style="font-size:0.85rem;"><b>Status</b></label>
+      <select name="membership_status" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ccc; border-radius:6px;">
+        {% for st in ['active', 'trial', 'expired', 'suspended'] %}
+          <option value="{{ st }}">{{ st|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label style="font-size:0.85rem;"><b>Role</b></label>
+      <select name="role" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ccc; border-radius:6px;">
+        {% for r in ['client', 'admin', 'super_admin'] %}
+          <option value="{{ r }}">{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn primary" style="width:100%;">+ Create User</button>
+    </div>
+  </form>
+</section>
+
+<!-- Users Table -->
+<section class="card">
+  <h2 style="margin-top:0;">Users &amp; Subscriptions ({{ users|length }})</h2>
+  {% if users %}
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+        <thead>
+          <tr style="text-align:left; border-bottom:2px solid #e5e5e0;">
+            <th style="padding:10px 8px;">User</th>
+            <th style="padding:10px 8px;">Plan</th>
+            <th style="padding:10px 8px;">Status</th>
+            <th style="padding:10px 8px;">Role</th>
+            <th style="padding:10px 8px;">Max Profiles</th>
+            <th style="padding:10px 8px;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+            {% set uid = u.get('uid', '') %}
+            {% set u_tier = (u.get('subscription_tier') or 'starter')|lower %}
+            {% set u_status = (u.get('membership_status') or 'active')|lower %}
+            {% set u_role = (u.get('role') or 'client')|lower %}
+            <tr style="border-bottom:1px solid #ecece8;">
+              <form method="post" action="{{ url_for('dashboard.super_admin_update_user', target_uid=uid) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <td style="padding:10px 8px;">
+                  <b>{{ u.get('username') or u.get('email') or uid }}</b><br>
+                  <span class="muted" style="font-size:0.8rem;">{{ u.get('email', '') }}</span>
+                </td>
+                <td style="padding:10px 8px;">
+                  <select name="subscription_tier" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+                    {% for key, plan in plans.items() %}
+                      <option value="{{ key }}" {% if u_tier == key %}selected{% endif %}>{{ plan.name }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td style="padding:10px 8px;">
+                  <select name="membership_status" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+                    {% for st in ['active', 'trial', 'expired', 'suspended'] %}
+                      <option value="{{ st }}" {% if u_status == st %}selected{% endif %}>{{ st|capitalize }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td style="padding:10px 8px;">
+                  <select name="role" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+                    {% for r in ['client', 'admin', 'super_admin'] %}
+                      <option value="{{ r }}" {% if u_role == r %}selected{% endif %}>{{ r }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td style="padding:10px 8px;">
+                  <input type="number" name="max_profiles" value="{{ u.get('max_profiles', 5) }}" min="1" max="10000" style="width:80px; padding:6px; border-radius:6px; border:1px solid #ccc;">
+                </td>
+                <td style="padding:10px 8px; display:flex; gap:6px; align-items:center;">
+                  <button type="submit" class="btn primary sm">Save</button>
+              </form>
+                  <form method="post" action="{{ url_for('dashboard.super_admin_delete_user', target_uid=uid) }}" style="display:inline;" onsubmit="return confirm('Delete user {{ u.get('email', uid) }}?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn sm" style="background:#fee2e2; color:#b91c1c; border-color:#fecaca;">Delete</button>
+                  </form>
+                </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted">No users loaded from Firestore.</p>
+  {% endif %}
+</section>
+{% endblock %}

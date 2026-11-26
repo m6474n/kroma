@@ -7,3 +7,4 @@ psutil>=5.9
 playwright>=1.48
 pyinstaller>=6.0
 pillow>=10.0
+firebase-admin>=6.0

@@ -7,7 +7,7 @@
     <a class="btn sm" href="{{ url_for('dashboard.account') }}">↻ Refresh Status</a>
   </div>
 
-  {% set status = (doc.get('membership_status') or doc.get('subscription_status') or 'active')|lower %}
+  {% set status = (doc.get('membership_status') or 'active')|lower %}
   {% set tier = (doc.get('subscription_tier') or 'pro')|upper %}
   {% set max_p = doc.get('max_profiles') or 100 %}
 

@@ -70,10 +70,10 @@
 </div>
 
 <div class="row">
-  <!-- Left Column: Add New Automation -->
+  <!-- Left Column: Add / Edit Automation -->
   <section class="card">
-    <h2>Add New Automation</h2>
-    <form method="post" action="{{ url_for('dashboard.automation_create') }}">
+    <h2 id="auto_form_title">Add New Automation</h2>
+    <form id="auto_form" method="post" action="{{ url_for('dashboard.automation_create') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       
       <div class="form-group" style="margin-bottom:12px;">
@@ -126,7 +126,10 @@
         </div>
       </div>
 
-      <button class="btn primary" type="submit">Create Automation</button>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button class="btn primary" id="auto_submit_btn" type="submit">Create Automation</button>
+        <button class="btn" id="auto_cancel_btn" type="button" style="display:none;" onclick="cancelEditAutomation()">Cancel</button>
+      </div>
     </form>
   </section>
 
@@ -193,6 +196,15 @@
               {% endif %}
             </div>
             
+            <button type="button" class="btn sm" onclick='editAutomation({{ {
+              "id": a.id,
+              "name": a.name,
+              "url": a.url,
+              "duration_seconds": a.duration_seconds,
+              "is_loop": a.is_loop,
+              "repeat_count": a.repeat_count,
+              "profile_ids": a.profile_ids
+            }|tojson }})'>Edit</button>
             <form method="post" action="{{ url_for('dashboard.automation_delete', auto_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Delete this automation?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn sm">Delete</button>
@@ -343,6 +355,40 @@ async function pollAutomationsStatus() {
   } catch (err) {
     // Ignore network drop
   }
+}
+
+function editAutomation(data) {
+  const form = document.getElementById('auto_form');
+  form.action = `/automations/${data.id}/update`;
+  form.querySelector('input[name="name"]').value = data.name || '';
+  form.querySelector('input[name="url"]').value = data.url || '';
+  form.querySelector('input[name="duration_seconds"]').value = data.duration_seconds || 30;
+  const loopChk = document.getElementById('is_loop');
+  loopChk.checked = !!data.is_loop;
+  toggleRepeat(loopChk.checked);
+  document.getElementById('repeat_count').value = data.repeat_count || 1;
+
+  const selected = new Set(data.profile_ids || []);
+  document.querySelectorAll('.auto-profile-chk').forEach(chk => {
+    chk.checked = selected.has(chk.value);
+  });
+  updateSelCount();
+
+  document.getElementById('auto_form_title').textContent = 'Edit Automation';
+  document.getElementById('auto_submit_btn').textContent = 'Update Automation';
+  document.getElementById('auto_cancel_btn').style.display = 'inline-block';
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelEditAutomation() {
+  const form = document.getElementById('auto_form');
+  form.action = "{{ url_for('dashboard.automation_create') }}";
+  form.reset();
+  toggleRepeat(false);
+  updateSelCount();
+  document.getElementById('auto_form_title').textContent = 'Add New Automation';
+  document.getElementById('auto_submit_btn').textContent = 'Create Automation';
+  document.getElementById('auto_cancel_btn').style.display = 'none';
 }
 
 setInterval(pollAutomationsStatus, 1500);

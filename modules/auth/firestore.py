@@ -102,6 +102,56 @@ def save_user_profile(user_id: str, profile_data: dict, id_token: str | None = N
         return False, f"Failed to connect to Firestore: {exc}"
 
 
+def list_users(id_token: str | None = None) -> tuple[bool, list[dict] | str]:
+    """List all user documents from Firestore `users` collection."""
+    project_id = get_firebase_project_id()
+    api_key = get_firebase_api_key()
+    if not api_key:
+        return False, "Firebase API Key not configured."
+
+    url = FIRESTORE_URL.format(project_id=project_id, path="users") + f"?key={api_key}&pageSize=200"
+    headers = {"Authorization": f"Bearer {id_token}"} if id_token else {}
+    try:
+        resp = _http.get(url, headers=headers, timeout=12)
+        if not resp.ok:
+            msg = resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
+            return False, f"Firestore error: {msg}"
+        docs = resp.json().get("documents", [])
+        users = []
+        for d in docs:
+            u = from_firestore_doc(d)
+            if "uid" not in u and "name" in d:
+                u["uid"] = d["name"].rsplit("/", 1)[-1]
+            users.append(u)
+        return True, users
+    except Exception as exc:
+        return False, f"Failed to list users: {exc}"
+
+
+def update_user_fields(user_id: str, fields: dict, id_token: str | None = None) -> tuple[bool, str]:
+    """Partially update specific fields on a Firestore `users/{user_id}` document."""
+    project_id = get_firebase_project_id()
+    api_key = get_firebase_api_key()
+    if not api_key:
+        return False, "Firebase API Key not configured."
+
+    mask_params = "&".join(f"updateMask.fieldPaths={k}" for k in fields.keys())
+    url = FIRESTORE_URL.format(project_id=project_id, path=f"users/{user_id}") + f"?key={api_key}&{mask_params}"
+    headers = {"Content-Type": "application/json"}
+    if id_token:
+        headers["Authorization"] = f"Bearer {id_token}"
+
+    payload = {"fields": {k: to_firestore_val(v) for k, v in fields.items()}}
+    try:
+        resp = _http.patch(url, json=payload, headers=headers, timeout=10)
+        if resp.ok:
+            return True, "User updated in Firestore."
+        msg = resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
+        return False, f"Firestore error: {msg}"
+    except Exception as exc:
+        return False, f"Failed to update user: {exc}"
+
+
 def get_user_profile(user_id: str, id_token: str | None = None) -> tuple[bool, dict | str]:
     """Fetch user profile document from Firestore."""
     project_id = get_firebase_project_id()
@@ -129,4 +179,54 @@ def get_user_profile(user_id: str, id_token: str | None = None) -> tuple[bool, d
             return False, f"Firestore HTTP error ({resp.status_code})."
     except Exception as exc:
         return False, f"Failed to connect to Firestore: {exc}"
+
+
+def list_users(id_token: str | None = None) -> tuple[bool, list[dict] | str]:
+    """List all user documents from Firestore `users` collection."""
+    project_id = get_firebase_project_id()
+    api_key = get_firebase_api_key()
+    if not api_key:
+        return False, "Firebase API Key not configured."
+
+    url = FIRESTORE_URL.format(project_id=project_id, path="users") + f"?key={api_key}&pageSize=200"
+    headers = {"Authorization": f"Bearer {id_token}"} if id_token else {}
+    try:
+        resp = _http.get(url, headers=headers, timeout=12)
+        if not resp.ok:
+            msg = resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
+            return False, f"Firestore error: {msg}"
+        docs = resp.json().get("documents", [])
+        users = []
+        for d in docs:
+            u = from_firestore_doc(d)
+            if "uid" not in u and "name" in d:
+                u["uid"] = d["name"].rsplit("/", 1)[-1]
+            users.append(u)
+        return True, users
+    except Exception as exc:
+        return False, f"Failed to list users: {exc}"
+
+
+def update_user_fields(user_id: str, fields: dict, id_token: str | None = None) -> tuple[bool, str]:
+    """Partially update specific fields on a Firestore `users/{user_id}` document."""
+    project_id = get_firebase_project_id()
+    api_key = get_firebase_api_key()
+    if not api_key:
+        return False, "Firebase API Key not configured."
+
+    mask_params = "&".join(f"updateMask.fieldPaths={k}" for k in fields.keys())
+    url = FIRESTORE_URL.format(project_id=project_id, path=f"users/{user_id}") + f"?key={api_key}&{mask_params}"
+    headers = {"Content-Type": "application/json"}
+    if id_token:
+        headers["Authorization"] = f"Bearer {id_token}"
+
+    payload = {"fields": {k: to_firestore_val(v) for k, v in fields.items()}}
+    try:
+        resp = _http.patch(url, json=payload, headers=headers, timeout=10)
+        if resp.ok:
+            return True, "User updated in Firestore."
+        msg = resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
+        return False, f"Firestore error: {msg}"
+    except Exception as exc:
+        return False, f"Failed to update user: {exc}"
 

@@ -64,7 +64,7 @@ def _security_guard():
             session.pop("user", None)
             if request.path.startswith("/api/"):
                 return jsonify({"error": "membership_locked", "status": mem_status}), 401
-            flash(f"Your membership is {mem_status.upper()}. Access has been locked.", "error")
+            flash("Your membership has expired. Access has been locked.", "error")
             return redirect(url_for("dashboard.login"))
         if isinstance(live_prof, dict):
             user_sess["subscription"] = {
@@ -198,18 +198,20 @@ def login():
                 if ok_prof and isinstance(prof, dict):
                     mem_status = (prof.get("membership_status") or prof.get("subscription_status") or "active").lower()
                     if mem_status not in ("active", "trial"):
-                        flash(f"Your membership is {mem_status.upper()}. Please contact administrator to renew.", "error")
+                        flash("Your membership has expired. Please contact administrator to renew.", "error")
                         return render_template("login.html", username=username)
 
                 sub_obj = {
                     "subscription_tier": prof.get("subscription_tier", "pro") if ok_prof and isinstance(prof, dict) else "pro",
                     "membership_status": prof.get("membership_status", "active") if ok_prof and isinstance(prof, dict) else "active",
-                    "subscription_status": prof.get("subscription_status", "active") if ok_prof and isinstance(prof, dict) else "active",
+                    "role": prof.get("role", "client") if ok_prof and isinstance(prof, dict) else "client",
                 }
                 session["user"] = {
                     "id": uid,
                     "username": username,
                     "email": fb_email,
+                    "role": sub_obj["role"],
+                    "id_token": token,
                     "subscription": sub_obj,
                 }
                 membership_stream.register_session(uid, id_token=token, refresh_token=rtoken, expires_in=exp, profile=sub_obj)
@@ -303,6 +305,8 @@ def _ids(name="ids"):
 # -------------------------------------------------------------- dashboard
 @bp.route("/")
 def index():
+    if _is_super_admin():
+        return redirect(url_for("dashboard.super_admin"))
     from modules.browser import automation_manager as atm
     all_autos = atm.list_automations()
     running_autos = [a for a in all_autos if a["status"] == "Running"]
@@ -753,6 +757,7 @@ def vpn_prep():
 @bp.post("/automations/create")
 def automation_create():
     from modules.browser import automation_manager as atm
+    from modules.auth.plans import get_plan
     name = request.form.get("name", "").strip()
     url = request.form.get("url", "").strip()
     duration = int(request.form.get("duration_seconds", 30))
@@ -763,6 +768,15 @@ def automation_create():
     
     if not profile_ids:
         flash("Please select at least one profile for the automation.", "error")
+        return redirect(url_for("dashboard.automations"))
+
+    sub = session.get("subscription") or {}
+    plan = get_plan(sub.get("subscription_tier"))
+    if len(atm.list_automations()) >= plan["max_automations"]:
+        flash(f"Plan limit reached: {plan['name']} allows up to {plan['max_automations']} automations.", "error")
+        return redirect(url_for("dashboard.automations"))
+    if len(profile_ids) > plan["max_concurrent_profiles"]:
+        flash(f"Plan limit reached: {plan['name']} allows up to {plan['max_concurrent_profiles']} concurrent profiles per automation.", "error")
         return redirect(url_for("dashboard.automations"))
     
     atm.create_automation(name, url, profile_ids, duration, is_loop, repeat_count, vpn_delay_seconds=vpn_delay)
@@ -786,12 +800,139 @@ def automation_stop(auto_id):
     return redirect(url_for("dashboard.automations"))
 
 
+@bp.post("/automations/<auto_id>/update")
+def automation_update(auto_id):
+    from modules.browser import automation_manager as atm
+    name = request.form.get("name", "").strip()
+    url = request.form.get("url", "").strip()
+    duration = int(request.form.get("duration_seconds", 30))
+    is_loop = request.form.get("is_loop") == "1"
+    repeat_count = int(request.form.get("repeat_count", 1))
+    profile_ids = request.form.getlist("profile_ids")
+
+    if not profile_ids:
+        flash("Please select at least one profile for the automation.", "error")
+        return redirect(url_for("dashboard.automations"))
+
+    atm.update_automation(auto_id, name, url, profile_ids, duration, is_loop, repeat_count)
+    flash(f"Updated automation '{name}'.", "success")
+    return redirect(url_for("dashboard.automations"))
+
+
 @bp.post("/automations/<auto_id>/delete")
 def automation_delete(auto_id):
     from modules.browser import automation_manager as atm
     atm.delete_automation(auto_id)
     flash("Automation deleted.", "success")
     return redirect(url_for("dashboard.automations"))
+
+
+# ----------------------------------------------------------- super admin
+def _is_super_admin() -> bool:
+    u = session.get("user") or {}
+    uid = u.get("id") or u.get("uid")
+    if uid:
+        from modules.auth import membership_stream
+        _, _, prof = membership_stream.check_live_status(uid, force=True)
+        if isinstance(prof, dict):
+            live_role = (prof.get("role") or "client").lower()
+            u["role"] = live_role
+            if isinstance(u.get("subscription"), dict):
+                u["subscription"]["role"] = live_role
+            session["user"] = u
+            return live_role in ("super_admin", "admin")
+    sub = u.get("subscription") or {}
+    role = (sub.get("role") or u.get("role") or "").lower()
+    return role in ("super_admin", "admin")
+
+
+@bp.route("/kroma-ctrl-9x")
+def super_admin():
+    if not _is_super_admin():
+        flash("Super Admin access required.", "error")
+        return redirect(url_for("dashboard.index"))
+
+    from modules.auth import firebase_admin_client as fb_admin
+    from modules.auth.plans import PLANS
+
+    ok, users_or_err = fb_admin.list_all_users()
+    if not ok:
+        flash(f"Could not load users: {users_or_err}", "error")
+        users = []
+    else:
+        users = users_or_err
+
+    return render_template("super_admin.html", users=users, plans=PLANS)
+
+
+@bp.post("/kroma-ctrl-9x/users/create")
+def super_admin_create_user():
+    if not _is_super_admin():
+        flash("Super Admin access required.", "error")
+        return redirect(url_for("dashboard.index"))
+
+    from modules.auth import firebase_admin_client as fb_admin
+
+    email = request.form.get("email", "").strip()
+    password = request.form.get("password", "").strip()
+    username = request.form.get("username", "").strip()
+    tier = request.form.get("subscription_tier", "starter").strip().lower()
+    status = request.form.get("membership_status", "active").strip().lower()
+    role = request.form.get("role", "client").strip().lower()
+
+    if not email or not password:
+        flash("Email and password are required.", "error")
+        return redirect(url_for("dashboard.super_admin"))
+
+    ok, msg = fb_admin.create_user(email, password, username, tier=tier, status=status, role=role)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("dashboard.super_admin"))
+
+
+@bp.post("/kroma-ctrl-9x/users/<target_uid>/update")
+def super_admin_update_user(target_uid):
+    if not _is_super_admin():
+        flash("Super Admin access required.", "error")
+        return redirect(url_for("dashboard.index"))
+
+    from modules.auth import firebase_admin_client as fb_admin
+    from modules.auth.plans import get_plan
+    from database.db import now_iso
+
+    tier = request.form.get("subscription_tier", "starter").strip().lower()
+    status = request.form.get("membership_status", "active").strip().lower()
+    role = request.form.get("role", "client").strip().lower()
+    plan = get_plan(tier)
+
+    max_profiles_raw = request.form.get("max_profiles", "").strip()
+    max_profiles = int(max_profiles_raw) if max_profiles_raw.isdigit() else plan["max_profiles"]
+
+    fields = {
+        "subscription_tier": tier,
+        "membership_status": status,
+        "role": role,
+        "max_profiles": max_profiles,
+        "max_automations": plan["max_automations"],
+        "max_concurrent_profiles": plan["max_concurrent_profiles"],
+        "updated_at": now_iso(),
+    }
+
+    ok, msg = fb_admin.update_user(target_uid, fields)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("dashboard.super_admin"))
+
+
+@bp.post("/kroma-ctrl-9x/users/<target_uid>/delete")
+def super_admin_delete_user(target_uid):
+    if not _is_super_admin():
+        flash("Super Admin access required.", "error")
+        return redirect(url_for("dashboard.index"))
+
+    from modules.auth import firebase_admin_client as fb_admin
+
+    ok, msg = fb_admin.delete_user(target_uid)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("dashboard.super_admin"))
 
 
 # --------------------------------------------------------------- account

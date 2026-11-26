@@ -165,6 +165,35 @@ def create_automation(
     return auto_id
 
 
+def update_automation(
+    auto_id: str,
+    name: str,
+    url: str,
+    profile_ids: list[str],
+    duration_seconds: int = 30,
+    is_loop: bool = False,
+    repeat_count: int = 1,
+):
+    now = now_iso()
+    with db() as conn:
+        conn.execute(
+            """UPDATE automations
+               SET name=?, url=?, profile_ids=?, duration_seconds=?,
+                   is_loop=?, repeat_count=?, updated_at=?
+               WHERE id=?""",
+            (
+                name or "Untitled Automation",
+                url,
+                json.dumps(profile_ids),
+                max(3, int(duration_seconds)),
+                1 if is_loop else 0,
+                max(1, int(repeat_count)),
+                now,
+                auto_id,
+            ),
+        )
+
+
 def delete_automation(auto_id: str):
     stop_automation(auto_id)
     with db() as conn:

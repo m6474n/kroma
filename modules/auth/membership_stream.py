@@ -21,7 +21,7 @@ def register_session(
         return
     now = time.time()
     prof = profile if isinstance(profile, dict) else {}
-    status = (prof.get("membership_status") or prof.get("subscription_status") or "active").lower()
+    status = (prof.get("membership_status") or "active").lower()
     tier = prof.get("subscription_tier", "pro")
     with _lock:
         _sessions[uid] = {
@@ -85,13 +85,12 @@ def check_live_status(uid: str | None, force: bool = False) -> tuple[bool, str, 
     Returns (is_allowed, status_string, profile_dict).
     """
     if not uid:
-        return True, "active", None
+        return False, "expired", None
 
     with _lock:
         entry = _sessions.get(uid)
         if not entry:
-            # Local-only fallback session (not Firebase-tracked)
-            return True, "active", None
+            return False, "expired", None
         if entry.get("locked"):
             return False, entry.get("status", "expired"), entry.get("profile")
         if not force and (time.time() - entry.get("last_checked", 0) < _CHECK_TTL_SECONDS):
@@ -108,7 +107,7 @@ def check_live_status(uid: str | None, force: bool = False) -> tuple[bool, str, 
 
     now = time.time()
     if ok_prof and isinstance(prof, dict):
-        mem_status = (prof.get("membership_status") or prof.get("subscription_status") or "active").lower()
+        mem_status = (prof.get("membership_status") or "active").lower()
         tier = prof.get("subscription_tier", "pro")
         with _lock:
             if uid in _sessions:

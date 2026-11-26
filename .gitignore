@@ -70,3 +70,4 @@ dist/
 *.spec
 kroma_build_flags.py
 
+*kroma-admin.json
